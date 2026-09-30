@@ -1,0 +1,115 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String
+  creditBalance Int       @default(50) // Default 50 free credits
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  bots          Bot[]
+  apiKeys       ApiKey[]
+
+  @@map("users")
+}
+
+model Bot {
+  id             String     @id @default(uuid())
+  userId         String
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String
+  systemPrompt   String
+  model          String     @default("gemini-1.5-flash")
+  allowedDomains String     @default("*")
+  isActive       Boolean    @default(true)
+  createdAt      DateTime   @default(now())
+
+  apiKeys        ApiKey[]
+  usageLogs      UsageLog[]
+  knowledgeDocs  KnowledgeDocument[]
+  knowledgeChunks KnowledgeChunk[]
+
+  @@map("bots")
+}
+
+model KnowledgeDocument {
+  id          String           @id @default(uuid())
+  botId       String
+  bot         Bot              @relation(fields: [botId], references: [id], onDelete: Cascade)
+  title       String
+  fileType    String           @default("text") // "pdf", "docx", "txt", "faq", "markdown"
+  fileSize    String?
+  chunkCount  Int              @default(0)
+  status      String           @default("ready") // "indexing", "ready", "error"
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  chunks      KnowledgeChunk[]
+
+  @@index([botId])
+  @@map("knowledge_documents")
+}
+
+model KnowledgeChunk {
+  id          String            @id @default(uuid())
+  documentId  String
+  document    KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  botId       String
+  bot         Bot               @relation(fields: [botId], references: [id], onDelete: Cascade)
+  content     String
+  embedding   String?           // 768-dim vector serialized as JSON float array
+  chunkIndex  Int               @default(0)
+  createdAt   DateTime          @default(now())
+
+  @@index([botId])
+  @@index([documentId])
+  @@map("knowledge_chunks")
+}
+
+model ApiKey {
+  id                 String     @id @default(uuid())
+  botId              String
+  bot                Bot        @relation(fields: [botId], references: [id], onDelete: Cascade)
+  userId             String
+  user               User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  keyPrefix          String     // e.g. "pk_live_abc12" or "sk_live_xyz99"
+  keyHash            String     @unique // SHA-256 string index for fast lookup
+  type               String     @default("PUBLIC_WIDGET") // "PUBLIC_WIDGET" | "SECRET_SERVER"
+  rateLimitPerMinute Int        @default(60)
+  createdAt          DateTime   @default(now())
+
+  usageLogs          UsageLog[]
+
+  @@index([keyHash])
+  @@index([botId])
+  @@index([userId])
+  @@map("api_keys")
+}
+
+model UsageLog {
+  id               String   @id @default(uuid())
+  botId            String
+  bot              Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
+  apiKeyId         String
+  apiKey           ApiKey   @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  messageCount     Int      @default(1)
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  originDomain     String?
+  createdAt        DateTime @default(now())
+
+  @@index([botId])
+  @@index([apiKeyId])
+  @@index([createdAt])
+  @@map("usage_logs")
+}

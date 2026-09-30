@@ -1,0 +1,68 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600;700&family=Prompt:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #ffffff;
+  --foreground: #1d1d1f;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: 'Prompt', 'Inter', 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Modal Backdrop Transitions */
+.modal-backdrop {
+  background: rgba(11, 15, 25, 0.45);
+  backdrop-filter: blur(4px);
+}
+
+/* Subtle topographic contour background pattern */
+.topo-bg {
+  background-color: #F8F9F7;
+  background-image: url("data:image/svg+xml,%3Csvg width='700' height='700' viewBox='0 0 700 700' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M70 120 C 180 80, 260 200, 390 150 C 520 100, 600 240, 680 180 M20 220 C 140 180, 220 310, 370 270 C 510 230, 580 370, 690 310 M0 340 C 130 290, 210 430, 350 380 C 490 330, 570 480, 700 420 M0 460 C 140 400, 240 540, 370 490 C 500 440, 580 580, 700 520 M0 580 C 150 510, 270 650, 400 610 C 520 570, 620 680, 700 640 M120 40 C 230 10, 320 120, 460 70 C 580 30, 640 130, 700 90 M-40 260 C 90 200, 180 330, 310 280 C 440 240, 510 390, 650 340 M-20 400 C 100 350, 170 470, 310 430 C 440 390, 540 520, 660 480' fill='none' stroke='%23CBD5CD' stroke-width='1.2' stroke-opacity='0.45' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='340' cy='320' r='180' fill='none' stroke='%23CBD5CD' stroke-width='0.8' stroke-opacity='0.3' stroke-dasharray='4 8'/%3E%3Cpath d='M100 500 C 250 440, 300 590, 480 530 C 600 490, 640 600, 700 570' fill='none' stroke='%23CBD5CD' stroke-width='1.2' stroke-opacity='0.35'/%3E%3C/svg%3E");
+  background-size: 800px 800px;
+}
+
+/* Warm Topographic contour background pattern for Workspace */
+.topo-bg-warm {
+  background-color: #F3F5F2;
+  background-image: url("data:image/svg+xml,%3Csvg width='700' height='700' viewBox='0 0 700 700' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M70 120 C 180 80, 260 200, 390 150 C 520 100, 600 240, 680 180 M20 220 C 140 180, 220 310, 370 270 C 510 230, 580 370, 690 310 M0 340 C 130 290, 210 430, 350 380 C 490 330, 570 480, 700 420 M0 460 C 140 400, 240 540, 370 490 C 500 440, 580 580, 700 520 M0 580 C 150 510, 270 650, 400 610 C 520 570, 620 680, 700 640 M120 40 C 230 10, 320 120, 460 70 C 580 30, 640 130, 700 90 M-40 260 C 90 200, 180 330, 310 280 C 440 240, 510 390, 650 340 M-20 400 C 100 350, 170 470, 310 430 C 440 390, 540 520, 660 480' fill='none' stroke='%23CBD5CD' stroke-width='1.2' stroke-opacity='0.42' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='340' cy='320' r='180' fill='none' stroke='%23CBD5CD' stroke-width='0.8' stroke-opacity='0.28' stroke-dasharray='4 8'/%3E%3Cpath d='M100 500 C 250 440, 300 590, 480 530 C 600 490, 640 600, 700 570' fill='none' stroke='%23CBD5CD' stroke-width='1.2' stroke-opacity='0.32'/%3E%3C/svg%3E");
+  background-size: 800px 800px;
+}
+
+/* Scrollbar styling for chat container */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #BDCEBF;
+  border-radius: 9999px;
+}
+
+/* Micro-interaction for buttons per DESIGN.md */
+.btn-press {
+  transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.btn-press:active {
+  transform: scale(0.95);
+}
+
+/* Scroll snap utilities */
+.snap-y-mandatory {
+  scroll-snap-type: y mandatory;
+}
+.snap-section {
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+

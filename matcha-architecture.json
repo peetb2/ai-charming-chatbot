@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "MatchaChatbot RAG Architecture & KM Retrieval Flow",
+    "output": "public/architecture.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "km-ingestion",
+        "label": "KM Ingestion & Training Flow",
+        "focus": ["dashboard_ui", "embedding_engine", "vector_db"],
+        "note": "Developers upload docs & FAQs. The embedding engine computes 768-dim vectors, indexed in Supabase pgvector partitioned by bot_id."
+      },
+      {
+        "id": "rag-chat-flow",
+        "label": "RAG Query & Chat Response Flow",
+        "focus": ["client_site", "widget_js", "api_gateway", "postgres", "embedding_engine", "vector_db", "gemini_llm"],
+        "note": "End-user chat triggers key check, query embedding, pgvector top-K retrieval, Gemini inference with KM context, and credit deduction."
+      },
+      {
+        "id": "full-architecture",
+        "label": "Full System & KM RAG Architecture",
+        "focus": ["client_site", "widget_js", "dashboard_ui", "api_gateway", "postgres", "embedding_engine", "vector_db", "gemini_llm"],
+        "note": "Unified overview of Next.js App Router, Supabase PostgreSQL & pgvector, Google Gemini 1.5 Flash, and text-embedding-004."
+      }
+    ]
+  },
+  "components": [
+    { "id": "client_site", "type": "external", "label": "Client Website", "sublabel": "Third-Party Site", "pos": [40, 320], "size": [130, 60] },
+    { "id": "widget_js", "type": "frontend", "label": "Embed Widget", "sublabel": "Shadow DOM UI", "pos": [250, 320], "size": [130, 60], "tag": "pk_live_..." },
+    { "id": "dashboard_ui", "type": "frontend", "label": "Developer Console", "sublabel": "Next.js App Router", "pos": [250, 120], "size": [140, 60], "tag": "KM & Bot Config" },
+    { "id": "api_gateway", "type": "backend", "label": "API Gateway", "sublabel": "/api/v1/widget/chat", "pos": [570, 320], "size": [160, 60], "tag": "RAG Orchestrator" },
+    { "id": "embedding_engine", "type": "cloud", "label": "Embedding Engine", "sublabel": "text-embedding-004", "pos": [570, 120], "size": [160, 60], "tag": "768-dim Vectors" },
+    { "id": "vector_db", "type": "database", "label": "Vector Database", "sublabel": "Supabase pgvector", "pos": [900, 120], "size": [160, 60], "tag": "bot_id Cosine Index" },
+    { "id": "postgres", "type": "database", "label": "PostgreSQL DB", "sublabel": "Users, Bots, Keys, Credits", "pos": [900, 320], "size": [160, 60], "tag": "Relational (Supabase)" },
+    { "id": "gemini_llm", "type": "cloud", "label": "Gemini AI Engine", "sublabel": "gemini-1.5-flash", "pos": [570, 500], "size": [160, 60], "tag": "RAG Generation" }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "MatchaChatbot Application Tier (Next.js 14)", "wraps": ["widget_js", "dashboard_ui", "api_gateway"] },
+    { "kind": "region", "label": "Supabase Managed Storage Tier", "wraps": ["postgres", "vector_db"] }
+  ],
+  "connections": [
+    { "id": "embed-script", "from": "client_site", "to": "widget_js", "label": "<script>", "variant": "emphasis" },
+    { "id": "chat-request", "from": "widget_js", "to": "api_gateway", "label": "POST /chat", "variant": "emphasis" },
+    { "id": "km-upload", "from": "dashboard_ui", "to": "embedding_engine", "label": "Upload Docs / FAQs", "variant": "emphasis" },
+    { "id": "dash-to-db", "from": "dashboard_ui", "to": "postgres", "label": "Save Bots & Keys", "fromSide": "top", "toSide": "right", "via": [[320, 40], [1120, 40], [1120, 350]], "labelDy": -10 },
+    { "id": "store-and-query", "from": "embedding_engine", "to": "vector_db", "label": "Store Vectors & Similarity Query", "variant": "emphasis" },
+    { "id": "verify-key-quota", "from": "api_gateway", "to": "postgres", "label": "Verify Key, CORS & Deduct Credit", "variant": "security" },
+    { "id": "query-to-vector", "from": "api_gateway", "to": "embedding_engine", "label": "Query to Vector", "fromSide": "top", "toSide": "bottom", "labelDx": -45 },
+    { "id": "context-chunks", "from": "vector_db", "to": "api_gateway", "label": "Top-K Context Chunks", "fromSide": "left", "toSide": "top" },
+    { "id": "llm-inference", "from": "api_gateway", "to": "gemini_llm", "label": "Combined Prompt (KM + Query)", "variant": "emphasis", "labelDy": 40 }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "KM Ingestion Pipeline (Flow A)",
+      "items": [
+        "Developer uploads Markdown, PDF, FAQ pairs, or JSON documents in Developer Console",
+        "Google text-embedding-004 generates 768-dimensional embeddings tagged with bot_id",
+        "Embeddings stored in PostgreSQL + pgvector (Supabase) with HNSW cosine distance index"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "RAG Retrieval & Generation (Flow B)",
+      "items": [
+        "Widget sends user message and public key; API gateway validates CORS and SHA-256 key hash against PostgreSQL",
+        "User query vectorized via text-embedding-004; pgvector retrieves top-K context chunks filtered by bot_id",
+        "Combined prompt (System Prompt + KM Context + User Query) synthesized by Gemini 1.5 Flash",
+        "Atomic transaction decrements credit balance, records token usage, and streams response to widget"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Dual Storage Strategy (Supabase)",
+      "items": [
+        "Relational tables manage Users, Bots, ApiKeys, and UsageLogs with Prisma ORM",
+        "pgvector extension stores knowledge chunks and vector embeddings in the same managed instance"
+      ]
+    }
+  ]
+}
