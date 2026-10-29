@@ -82,12 +82,19 @@ export async function POST(req: NextRequest) {
     }
 
     const genAI = new GoogleGenerativeAI(geminiApiKey);
+    const activeBotModel =
+      bot.model === "gemini-1.5-flash" || bot.model === "gemini-2.5-flash-lite"
+        ? "gemini-3.5-flash-lite"
+        : bot.model === "gemini-1.5-pro"
+        ? "gemini-3.8-flash"
+        : bot.model || "gemini-3.5-flash-lite";
+
     const candidateModels = [
-      bot.model,
-      "gemini-3.5-flash",
-      "gemini-flash-latest",
+      activeBotModel,
       "gemini-3.5-flash-lite",
-      "gemini-3.1-flash-lite",
+      "gemini-3.8-flash",
+      "gemini-flash-latest",
+      "gemini-3.5-flash",
     ].filter((m): m is string => Boolean(m && m.trim().length > 0));
 
     const uniqueModels = Array.from(new Set(candidateModels));

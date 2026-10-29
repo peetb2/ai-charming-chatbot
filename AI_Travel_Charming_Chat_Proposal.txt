@@ -35,7 +35,7 @@ AI Travel Charming Chat เป็นแพลตฟอร์มให้บร�
 - Frontend & Dashboard: Next.js (App Router), TypeScript และ Tailwind CSS
 - ฐานข้อมูลและระบบยืนยันตัวตน: PostgreSQL (Supabase) จัดการผ่าน Prisma ORM
 - Cache และ Rate Limiting: Redis / Upstash สำหรับตรวจสอบสถานะ Key และติดตาม Rate Limit อย่างรวดเร็ว
-- AI Inference Engine: Google Gemini API (โมเดลหลัก: gemini-1.5-flash)
+- AI Inference Engine: Google Gemini API (โมเดลหลัก: gemini-3.5-flash-lite)
 - Embed Widget: Pure Vanilla JavaScript ขนาดเล็ก ไม่มี External Dependency 
   และให้บริการผ่าน CDN / Public Static Assets
 

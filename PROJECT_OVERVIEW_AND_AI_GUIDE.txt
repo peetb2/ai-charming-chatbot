@@ -1,0 +1,486 @@
+================================================================================
+PROJECT ARCHITECTURE & OPERATION GUIDE: AI TRAVEL CHARMING CHAT
+(AI-to-AI Knowledge Transfer & System Specification Document)
+Project Name: AI Travel Charming Chat (MatchaChatbot)
+Repository Type: Full-Stack Chatbot-as-a-Service (CaaS) & RAG Embed Platform
+Document Purpose: Provide comprehensive technical and functional context to an AI agent
+================================================================================
+
+[1] EXECUTIVE SUMMARY & CORE MISSION
+--------------------------------------------------------------------------------
+AI Travel Charming Chat is an enterprise-grade Chatbot-as-a-Service (CaaS) and
+Retrieval-Augmented Generation (RAG) platform. It is engineered for travel
+agencies, hotels, tourism operators, and e-commerce websites.
+
+The platform allows business owners to:
+1. Register and manage custom AI Bot personas via a Developer Dashboard.
+2. Upload proprietary knowledge bases (PDF, TXT, DOCX, Markdown, FAQs) or
+   crawl website URLs to automatically index domain-specific facts.
+3. Generate scoped API keys (Public Widget Keys and Secret Server Keys).
+4. Embed an intelligent, floating chatbot widget on any external website using
+   a single HTML <script> tag:
+     <script src="https://example.com/widget.js" data-bot-key="pk_live_..." defer></script>
+5. Ground customer inquiries strictly in business facts via vector embeddings,
+   eliminating LLM hallucinations while enforcing strict domain whitelisting
+   and credit-based rate limiting.
+
+
+[2] TECHNOLOGY STACK
+--------------------------------------------------------------------------------
+- Full-Stack Framework: Next.js 14 (App Router, Server Actions, Route Handlers)
+- Language: TypeScript & Modern JavaScript (ES2022+)
+- Database & ORM: SQLite (Local Dev) / PostgreSQL (Production), managed via Prisma ORM
+- AI Inference Engine: Google Gemini API (gemini-3.5-flash-lite / gemini-3.8-flash)
+- Vector Embeddings: Google Generative AI (gemini-embedding-001, 768 dimensions)
+  with built-in deterministic mathematical fallback embedding for offline/testing.
+- Client Embed Script: Pure Vanilla JavaScript (<16KB), zero external dependencies,
+  isolated within a closed Shadow DOM.
+- Styling: Tailwind CSS (Sage green theme, topographic aesthetic)
+- Key Security Pattern: Slip2Go architecture (One-way SHA-256 key hashing)
+
+
+[3] DETAILED PAGE-BY-PAGE SPECIFICATION (EVERY ROUTE EXPLAINED)
+--------------------------------------------------------------------------------
+
+PAGE 1: PUBLIC LANDING & SHOWCASE PAGE
+- Route: / (File: src/app/page.tsx)
+- Access: Public (Guest & Authenticated users)
+- Purpose: Introduces the CaaS platform, demonstrates live widget capabilities,
+  and offers 1-click script integration.
+- Key Sections & UI Components:
+  1. Navigation Header:
+     - Logo & Brand: "AI Travel Charming Chat" (Sage green motif).
+     - Section Jump Links: Product, How It Works, Integration.
+     - Auth State Detection: Checks cached user session via `client-auth.ts`.
+       Renders "Login" / "Get Started" buttons for visitors, or "Dashboard ->"
+       with user avatar if logged in.
+  2. Hero Section:
+     - Value proposition tagline: "Full-Stack Chatbot-as-a-Service & RAG Embed Platform".
+     - Interactive Chatbot Simulator: Live functional chat preview on the right
+       side of the screen where visitors can test bot queries, inspect typing
+       indicator animations, and review quick suggestions.
+  3. "How It Works" Section:
+     - Visual 3-step lifecycle:
+       Step 1: Train & Ingest Knowledge (Upload documents or crawl website).
+       Step 2: Generate API Key & Whitelist Domains (Slip2Go security).
+       Step 3: Embed Script Tag (Single-line HTML snippet).
+  4. Integration Code Snippet:
+     - Syntax-highlighted HTML block showing the embed code.
+     - 1-Click "Copy Snippet" button with animated checkmark and toast alert.
+  5. Section Observer:
+     - Uses IntersectionObserver to track scroll depth across sections and
+       update dot indicators dynamically.
+
+---
+
+PAGE 2: USER LOGIN PAGE
+- Route: /login (File: src/app/login/page.tsx)
+- Access: Public (Redirects to /dashboard upon successful login)
+- Purpose: Authenticates developers/business owners to access their bots and keys.
+- Key Features & UI Components:
+  1. Form Fields:
+     - Email address (with live regex format validation).
+     - Password input (masked with validation for minimum 6 characters).
+     - "Keep me signed in" checkbox for persistent session tokens.
+  2. Actions & Integrations:
+     - Form Submit: Sends POST request to `/api/auth/login`.
+     - Error Handling: Displays contextual inline error badges for invalid
+       credentials or unregistered email.
+     - Session Persistence: On HTTP 200, saves token/session in LocalStorage
+       and redirects immediately to `/dashboard`.
+     - Link to Registration: Direct route to `/register` for new accounts.
+     - Mock SSO Button: "Continue with Google" for social login demonstration.
+
+---
+
+PAGE 3: USER REGISTRATION PAGE
+- Route: /register (File: src/app/register/page.tsx)
+- Access: Public
+- Purpose: Onboards new business users and initializes their credit balance.
+- Key Features & UI Components:
+  1. Form Fields:
+     - Email input (checks uniqueness against SQLite/PostgreSQL `users` table).
+     - Password creation (min 6 characters).
+     - Terms of Service & Privacy Policy agreement checkbox.
+  2. Automated Provisioning:
+     - Dispatches POST request to `/api/auth/register`.
+     - The backend Prisma transaction creates the `User` record and automatically
+       provisions 50 FREE INITIAL CREDITS (`creditBalance: 50`) to enable
+       immediate bot testing without upfront payment.
+     - Automatically logs the user in and redirects to `/dashboard`.
+
+---
+
+PAGE 4: DEVELOPER DASHBOARD - OVERVIEW HUB
+- Route: /dashboard (File: src/app/dashboard/page.tsx)
+- Access: Protected (Requires authenticated user session)
+- Purpose: Central command center displaying live operational telemetry,
+  bot metrics, API volume, and account credit balance.
+- Key Sections & UI Components:
+  1. Responsive Sidebar (src/components/dashboard/Sidebar.tsx):
+     - Navigation items: Overview (/dashboard), Bots (/dashboard/bots),
+       API Keys (/dashboard/keys), Usage Logs (/dashboard?tab=logs),
+       and Billing (/dashboard?tab=billing).
+     - Displays current user profile, email, and 1-click logout button.
+  2. Telemetry Stat Cards (Top Row):
+     - Active Bots Count: Total number of bots currently deployed and active.
+     - Total API Invocations: Real-time cumulative counter of messages processed.
+     - Uptime & Success Rate: Historical percentage of HTTP 200 responses.
+     - Credit Balance: Live message credits remaining in account.
+  3. Interactive 7-Day Traffic Chart:
+     - Daily bar graph showing request volume trends and throughput peaks.
+  4. Quick Launch Action Bar:
+     - "+ Create New Bot" button (jumps to `/dashboard/bots/new`).
+     - "+ Generate Key" button (jumps to `/dashboard/keys/new`).
+  5. Live Operational Activity Table:
+     - Feed of recent API calls with timestamp, bot name, endpoint, status code,
+       and latency (ms).
+
+---
+
+PAGE 5: BOT MANAGEMENT - BOTS DIRECTORY
+- Route: /dashboard/bots (File: src/app/dashboard/bots/page.tsx)
+- Access: Protected
+- Purpose: View, search, inspect, pause, and delete custom AI chatbots.
+- Key Features & UI Components:
+  1. Search & Filter Bar:
+     - Real-time text search filtering by bot name or description.
+     - Filter dropdowns by bot status ("All", "Active", "Paused") and
+       AI model ("All", "gemini-3.5-flash-lite", "gemini-3.8-flash").
+  2. Bot Card Grid:
+     - Displays bot identity, active model badge, and system prompt preview.
+     - Shows allowed domain whitelist (e.g. "hotelmae.com, travelhub.co").
+     - Total knowledge chunk count and indexed document count.
+  3. Knowledge Base Inspector Drawer:
+     - Clicking a bot opens an interactive sliding inspector.
+     - Shows all uploaded files (PDF, TXT, DOCX) and crawled web URLs.
+     - Chunk Breakdown: Shows chunk index, character length, and vector status.
+     - Live Vector Search Simulator: Allows developer to type a test question
+       inside the drawer to test cosine similarity and see which top-K chunks
+       are retrieved before deploying live!
+  4. Bot Operations:
+     - Pause/Resume toggle switch.
+     - Delete Bot button (triggers cascade deletion of knowledge chunks and keys).
+     - Direct link: "Get Embed Code" -> preselects bot in key generator.
+
+---
+
+PAGE 6: BOT CREATION WIZARD - NEW BOT
+- Route: /dashboard/bots/new (File: src/app/dashboard/bots/new/page.tsx)
+- Access: Protected
+- Purpose: Step-by-step wizard to configure bot personality and ingest knowledge.
+- Key Steps & UI Components:
+  1. Step 1: Persona Configuration:
+     - Bot Name: Friendly identifier (e.g., "Mae Hong Son Charming Guide").
+     - Model Selector: Choose underlying LLM (`gemini-3.5-flash-lite`, `gemini-3.8-flash`, etc.).
+     - System Prompt & Personality: Define tone (Professional, Warm, Concise),
+       greeting message, and domain instructions.
+     - Domain Whitelisting: Restrict key usage to specific customer websites
+       (or `*` for open development).
+  2. Step 2: Knowledge Ingestion (Dual Ingestion Mode):
+     - Mode A: File Upload (Drag-and-Drop)
+       * Accepts `.pdf`, `.docx`, `.txt`, `.md`, and `.faq`.
+       * Chunks text into 750-character semantic blocks with 120-character overlap.
+     - Mode B: Automated Web Crawler
+       * Input website URL (e.g., `https://maehongson-travel.org`).
+       * Set crawl depth (1 to 3 levels) and maximum pages limit (e.g., 15 pages).
+       * Crawler automatically extracts main text, strips navigation boilerplate,
+         and formats content into knowledge chunks.
+  3. Automated Vector Embedding Pipeline:
+     - Submitting the form calls Google Gemini embedding API (`gemini-embedding-001`).
+     - Vector embeddings (768 dimensions) are computed, stringified, and stored
+       into `KnowledgeChunk` records in database.
+
+---
+
+PAGE 7: API KEY MANAGEMENT - KEYS LIST
+- Route: /dashboard/keys or /dashboard/api-keys (File: src/app/dashboard/keys/page.tsx)
+- Access: Protected
+- Purpose: Audit, inspect, copy embed codes, and revoke active API keys.
+- Key Features & UI Components:
+  1. Key Inventory Table:
+     - Key Prefix: Masked display (e.g., `pk_live_7a3d...`). In accordance with
+       the Slip2Go security model, plaintext keys are never stored or displayed.
+     - Key Type Badge: `PUBLIC_WIDGET` (for frontend client embedding) or
+       `SECRET_SERVER` (for backend server-to-server API calls).
+     - Bound Bot: Displays which chatbot this key routes traffic to.
+     - Rate Limit: Requests allowed per minute (default 60 req/min).
+     - Creation Date: Formatted Thai/English localized timestamp.
+  2. Actions:
+     - Copy Script Tag: Instantly generates the ready-to-paste `<script>` tag.
+     - Revocation Modal: Prompts confirmation before immediately revoking
+       and deleting the key from the database, instantly blocking unauthorized traffic.
+
+---
+
+PAGE 8: API KEY GENERATION WIZARD - NEW KEY
+- Route: /dashboard/keys/new or /dashboard/api-keys/new (File: src/app/dashboard/keys/new/page.tsx)
+- Access: Protected
+- Purpose: Securely generate new cryptographic API keys for client embedding.
+- Key Steps & UI Components:
+  1. Creation Form:
+     - Select target Bot from user's active bots.
+     - Key Label / Description (e.g., "Production Widget for Main Hotel Site").
+     - Scoped Permissions: Read, Write, Admin toggles.
+     - Expiry Duration: 30 days, 90 days, 1 year, or Never.
+  2. Cryptographic Generation:
+     - Generates cryptographically secure key: `pk_live_<32_random_hex_bytes>`.
+     - Computes SHA-256 hash of the key and stores the hash in the database.
+  3. "One-Time Secret Revelation" Screen:
+     - Security Alert Banner: Explicitly warns the user that the secret key
+       will NEVER be displayed again once leaving this page.
+     - Plaintext Key Box with 1-click copy button.
+     - Embed Code Box: Ready-to-use HTML `<script>` block with the key injected.
+
+---
+
+PAGE 9: USAGE TELEMETRY & LOGS AUDIT VIEW
+- Route: /dashboard?tab=logs (Redirect from /dashboard/analytics)
+- Access: Protected
+- Purpose: Developer audit log to track every API request, token consumption,
+  and detect unauthorized scraping attempts.
+- Key Columns & UI Components:
+  1. Timestamp: Precise execution time of each chat request.
+  2. Bot Name: Bot target that processed the prompt.
+  3. API Endpoint: Displays `/api/v1/widget/chat`.
+  4. HTTP Status Code: 200 (Success), 403 (Origin/Domain Denied),
+     429 (Rate Limit Exceeded), 402 (Insufficient Credits).
+  5. Response Latency: Processing duration in milliseconds.
+  6. Token Telemetry: Breakdown of Prompt Tokens and Completion Tokens.
+  7. Origin Domain: Exact website origin reported by browser headers.
+
+---
+
+PAGE 10: BILLING & CREDIT MANAGEMENT VIEW
+- Route: /dashboard?tab=billing
+- Access: Protected
+- Purpose: Monitor message credit balance, top up credits, and review usage costs.
+- Key UI Components:
+  1. Current Balance Indicator: Highlights remaining message quota.
+  2. Top-Up Packages: Tiered credit bundles (e.g., 500 messages, 2,000 messages,
+     10,000 messages).
+  3. Rate Details: Explains cost-per-message model (1 credit deducted per
+     successful RAG query).
+
+---
+
+PAGE 11: CLIENT EMBED SIMULATION & TEST PAGE
+- Route: /test-embed.html (File: test-embed.html)
+- Access: Public
+- Purpose: Real-world client-side testing environment.
+- Details:
+  - Simulates a 3rd-party travel agency website ("Mae Hong Son Travel Portal").
+  - Contains sample host website CSS styles (cards, fonts, headers).
+  - Embeds the widget via:
+      <script src="/widget.js" data-bot-key="pk_live_test" defer></script>
+  - Proves that the widget's closed Shadow DOM prevents host CSS pollution
+    and ensures the floating chat launcher renders flawlessly.
+
+---
+
+PAGE 12: SYSTEM ARCHITECTURE INTERACTIVE VISUALIZER
+- Route: /architecture.html (File: public/architecture.html)
+- Access: Public
+- Purpose: Interactive HTML visual diagram illustrating all platform layers,
+  data flow pipelines, and database relations for technical demonstrations.
+
+
+[4] HIGH-LEVEL ARCHITECTURAL MODULES
+--------------------------------------------------------------------------------
+
+A. DEVELOPER DASHBOARD (/dashboard)
+   - Bot Management: Create, edit, and configure chatbots (name, system prompt,
+     allowed domains, target website URL).
+   - Knowledge Base Hub: Document upload and website web crawler interface.
+     Extracts text, segments chunks, and computes vector embeddings.
+   - API Key Console: Generates prefixed keys (pk_live_... for widgets,
+     sk_live_... for backend SDKs). Displays the secret key once upon creation;
+     stores only SHA-256 hash.
+   - Telemetry & Analytics: Tracks token usage, message counts, top visitor
+     domains, and credit balances.
+
+B. EMBEDDABLE CLIENT WIDGET (/widget.js, /embed.js)
+   - Ultra-lightweight Vanilla JS script (<16KB).
+   - Reads the client's public API key from the script attribute:
+     document.currentScript.getAttribute('data-bot-key').
+   - Mounts inside a closed Shadow DOM (attachShadow({ mode: 'closed' }))
+     so host website CSS stylesheets cannot alter or break the chat UI.
+   - Manages persistent chat sessions per visitor in browser LocalStorage.
+   - Renders a floating launcher button, expandable modal, chat history,
+     typing indicators, and quick action prompts.
+
+C. SECURE API GATEWAY (/api/v1/widget/chat)
+   - Serves as the central security and orchestration proxy for all chats.
+   - Inspects HTTP "Origin" and "Referer" request headers.
+   - Validates the incoming public key hash against allowed domains.
+   - Enforces per-minute rate limits and atomic account credit balance deductions.
+   - Orchestrates the RAG similarity search and feeds context to Google Gemini.
+
+D. RAG & VECTOR ENGINE (src/lib/rag-engine.ts)
+   - Chunking: Semantic boundary overlap chunker (750 chars max, 120 chars overlap).
+   - Embedding: Generates 768-dimensional float vectors via Google Gemini.
+   - Retrieval: Calculates vector dot-product cosine similarity against
+     stored KnowledgeChunks for the target bot (minimum similarity threshold ~0.45).
+   - Context Injection: Injects top-K chunks directly into the Gemini system prompt.
+
+E. INGESTION & WEB CRAWLER (src/lib/crawler.ts)
+   - Fetches arbitrary website URLs, strips HTML boilerplate, extracts main text,
+     and pushes chunks to the RAG vector store automatically.
+
+
+[5] DATABASE SCHEMA & ENTITY RELATIONSHIPS (Prisma)
+--------------------------------------------------------------------------------
+
+1. User (Table: users)
+   - id: String (UUID, Primary Key)
+   - email: String (Unique)
+   - passwordHash: String
+   - creditBalance: Int (Default 50 free credits, decremented per message)
+   - Relations: bots (1-to-many), apiKeys (1-to-many)
+
+2. Bot (Table: bots)
+   - id: String (UUID, Primary Key)
+   - userId: String (Foreign Key -> User)
+   - name: String (e.g., "Mae Hong Son Travel Assistant")
+   - systemPrompt: String (Bot persona, guidelines, language style)
+   - model: String (Default: "gemini-3.5-flash-lite")
+   - allowedDomains: String (Comma-separated whitelist or "*" for all)
+   - websiteUrl: String? (Source URL for crawler)
+   - isActive: Boolean (Default true)
+   - Relations: apiKeys, usageLogs, knowledgeDocs, knowledgeChunks
+
+3. KnowledgeDocument (Table: knowledge_documents)
+   - id: String (UUID, Primary Key)
+   - botId: String (Foreign Key -> Bot)
+   - title: String (e.g., "mae_hong_son_guide.pdf")
+   - fileType: String ("pdf", "docx", "txt", "faq", "markdown", "website")
+   - chunkCount: Int
+   - status: String ("indexing", "ready", "error")
+   - Relations: chunks (1-to-many)
+
+4. KnowledgeChunk (Table: knowledge_chunks)
+   - id: String (UUID, Primary Key)
+   - documentId: String (Foreign Key -> KnowledgeDocument)
+   - botId: String (Foreign Key -> Bot)
+   - content: String (Raw text snippet)
+   - embedding: String? (768-dim float array serialized as JSON string)
+   - chunkIndex: Int
+
+5. ApiKey (Table: api_keys)
+   - id: String (UUID, Primary Key)
+   - botId: String (Foreign Key -> Bot)
+   - userId: String (Foreign Key -> User)
+   - keyPrefix: String (e.g., "pk_live_9b2f")
+   - keyHash: String (SHA-256 hash string, Unique Index)
+   - type: String ("PUBLIC_WIDGET" | "SECRET_SERVER")
+   - rateLimitPerMinute: Int (Default 60)
+
+6. UsageLog (Table: usage_logs)
+   - id: String (UUID, Primary Key)
+   - botId: String (Foreign Key -> Bot)
+   - apiKeyId: String (Foreign Key -> ApiKey)
+   - messageCount: Int (Default 1)
+   - promptTokens: Int
+   - completionTokens: Int
+   - originDomain: String? (Extracted from client request header)
+   - createdAt: DateTime
+
+
+[6] CORE LIFECYCLES & STEP-BY-STEP WORKFLOWS
+--------------------------------------------------------------------------------
+
+WORKFLOW 1: KNOWLEDGE BASE INGESTION (RAG INDEXING)
+1. Business user uploads a document or provides a website URL via Dashboard.
+2. Ingestion handler receives text/file and calls chunkText(rawText, 750, 120).
+3. The chunker splits paragraphs cleanly while keeping a 120-character overlapping
+   window to maintain semantic continuity across chunk edges.
+4. For each chunk:
+   - generateEmbedding(chunkText) calls Gemini 768-dim embedding API.
+   - The resulting vector is stringified to JSON and saved in `KnowledgeChunk`.
+5. Document status updates to "ready".
+
+WORKFLOW 2: WIDGET BOOTSTRAPPING ON CLIENT WEBSITES
+1. External website developer includes:
+   <script src="https://domain.com/widget.js" data-bot-key="pk_live_xyz..." defer></script>
+2. widget.js executes immediately upon script load.
+3. Finds its own script tag and extracts data-bot-key.
+4. Injects a closed Shadow DOM container into document.body.
+5. Injects floating chat bubble icon with badge counter.
+6. When visitor clicks the bubble, opens responsive chat conversation window.
+7. Retrieves existing sessionId from localStorage (or creates a random UUID).
+
+WORKFLOW 3: CHAT REQUEST EXECUTION & SECURITY LIFECYCLE
+1. User types question: "When is the best season to visit Mae Hong Son?"
+2. Widget sends HTTP POST to: /api/v1/widget/chat
+   Payload: {
+     "publicKey": "pk_live_xyz...",
+     "message": "When is the best season to visit Mae Hong Son?",
+     "sessionId": "anon-session-1234"
+   }
+3. Chat Gateway (/api/v1/widget/chat) performs security checks:
+   a. Computes SHA-256 hash of publicKey and queries `api_keys`.
+   b. Verifies that the bot is active (bot.isActive === true).
+   c. Header Check: Extracts "Origin" or "Referer". Compares against bot.allowedDomains.
+      - If domain is not authorized -> returns HTTP 403 Forbidden.
+   d. Rate Limit Check: Verifies request frequency per minute.
+      - If limit exceeded -> returns HTTP 429 Too Many Requests.
+   e. Credit Check: Verifies owner user.creditBalance > 0.
+      - If 0 credits -> returns HTTP 402 Payment Required.
+4. RAG Retrieval Step:
+   a. Gateway generates query vector for visitor question via generateEmbedding().
+   b. Queries all KnowledgeChunks belonging to botId.
+   c. Computes cosine similarity between query vector and stored chunk embeddings.
+   d. Filters chunks with similarity >= 0.45 and selects top 3 to 5 chunks.
+5. Prompt Assembly & Inference:
+   a. Merges Bot System Prompt + Retrieved Knowledge Context + User Question:
+      System Prompt: "You are Mae Hong Son travel assistant..."
+      Context: "[Source: Guidebook] November to February is cool season..."
+      User: "When is the best season to visit?"
+   b. Dispatches request to Google Gemini API (gemini-3.5-flash-lite).
+6. Accounting & Persistence:
+   a. Atomically decrements 1 credit from user.creditBalance.
+   b. Creates a new record in `usage_logs` capturing token metrics and origin domain.
+7. Gateway returns JSON response:
+   { "reply": "The best time to visit Mae Hong Son is November to February..." }
+8. Widget renders message in conversation view and caches it in localStorage.
+
+
+[7] SECURITY ARCHITECTURE & DESIGN HIGHLIGHTS
+--------------------------------------------------------------------------------
+1. Zero Plaintext API Keys:
+   Plaintext keys are displayed strictly once upon generation. Only the SHA-256
+   hash is persisted in the database. When a request arrives, the key is hashed
+   on the fly and matched via indexed lookup.
+2. Browser-Enforced Origin Whitelisting:
+   Even if an attacker steals a public key (pk_live_...), they cannot use it on
+   an unauthorized website because modern browsers enforce immutable "Origin"
+   and "Referer" headers that cannot be spoofed by client scripts.
+3. Shadow DOM Style Isolation:
+   Zero CSS leakage in both directions: host website styles cannot break the
+   chat interface, and the chat widget's Tailwind styles cannot alter the host site.
+4. Offline / Resilience Fallback:
+   If the Gemini embedding API undergoes rate limits or network issues, the
+   engine automatically falls back to a deterministic 768-dimensional sinusoidal
+   hashing function to prevent downtime.
+
+
+[8] QUICK LOCAL SETUP COMMANDS
+--------------------------------------------------------------------------------
+1. Install dependencies:
+   npm install
+
+2. Configure environment (.env):
+   DATABASE_URL="file:./prisma/dev.db"
+   GEMINI_API_KEY="your-gemini-api-key"
+   NEXT_PUBLIC_APP_URL="http://localhost:3000"
+
+3. Initialize Database:
+   npx prisma db push
+   node prisma/seed.js
+
+4. Run Development Server:
+   npm run dev
+   Access dashboard at: http://localhost:3000
+================================================================================
+END OF SPECIFICATION DOCUMENT
+================================================================================

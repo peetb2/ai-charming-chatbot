@@ -1,48 +1,57 @@
 "use client";
 
-import React from "react";
+import React, { Suspense } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams, useRouter } from "next/navigation";
+import { logoutUser, getCachedUser, fetchCurrentUser, UserSessionData } from "@/lib/client-auth";
 
 interface SidebarProps {
   mobileOpen: boolean;
   onCloseMobile: () => void;
 }
 
-export default function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
+function SidebarNavContent({ mobileOpen, onCloseMobile }: SidebarProps) {
   const pathname = usePathname();
-  const [currentUser, setCurrentUser] = React.useState<{
-    email: string;
-    creditBalance: number;
-  } | null>(null);
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const tabParam = searchParams.get("tab");
+
+  const [currentUser, setCurrentUser] = React.useState<UserSessionData | null>(() => getCachedUser());
 
   React.useEffect(() => {
-    fetch("/api/auth/me")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.authenticated && data.user) {
-          setCurrentUser(data.user);
-        }
-      })
-      .catch(() => {});
+    // Initial fetch to sync real user state
+    fetchCurrentUser().then((user) => {
+      if (user) setCurrentUser(user);
+    });
+
+    const handleAuthChange = () => {
+      setCurrentUser(getCachedUser());
+    };
+
+    window.addEventListener("matcha_auth_change", handleAuthChange);
+    return () => {
+      window.removeEventListener("matcha_auth_change", handleAuthChange);
+    };
   }, []);
 
   const handleLogout = async () => {
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
-      window.location.href = "/login";
+      await logoutUser();
+      router.push("/login");
+      router.refresh();
     } catch {
-      window.location.href = "/login";
+      router.push("/login");
     }
   };
 
   const isBotsActive = pathname.startsWith("/dashboard/bots");
-  const isDashboardActive = pathname === "/dashboard";
   const isKeysActive = pathname.startsWith("/dashboard/keys") || pathname.startsWith("/dashboard/api-keys");
-  const isLogsActive = pathname.startsWith("/dashboard/analytics");
+  const isLogsActive = pathname.startsWith("/dashboard/analytics") || (pathname === "/dashboard" && tabParam === "logs");
+  const isBillingActive = pathname === "/dashboard" && tabParam === "billing";
+  const isDashboardActive = pathname === "/dashboard" && !isLogsActive && !isBillingActive;
 
-  const displayName = currentUser ? currentUser.email.split("@")[0] : "Admin Workspace";
-  const avatarLetter = displayName.charAt(0).toUpperCase();
+  const avatarLetter = (currentUser?.email ? currentUser.email.charAt(0) : "A").toUpperCase();
+  const creditDisplay = currentUser ? `${currentUser.creditBalance ?? 0} เครดิต` : "91 เครดิต";
 
   return (
     <>
@@ -56,48 +65,46 @@ export default function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
 
       {/* Main Sidebar */}
       <aside
-        className={`w-64 bg-sidebar text-emerald-100 flex flex-col justify-between shrink-0 fixed inset-y-0 left-0 z-50 transition-transform duration-200 select-none border-r border-sidebarBorder ${
+        className={`w-64 bg-[#27382B] text-emerald-100 flex flex-col justify-between shrink-0 fixed inset-y-0 left-0 z-50 transition-transform duration-200 select-none border-r border-[#1F2C22] ${
           mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         }`}
       >
         <div>
           {/* Brand Logo Header */}
-          <div className="h-20 flex items-center px-5 gap-3 border-b border-sidebarBorder">
-            <div className="w-9 h-9 rounded-xl bg-brandGreen flex items-center justify-center text-white shadow-md shadow-emerald-950/20">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="h-20 flex items-center px-5 gap-3 border-b border-[#1F2C22]">
+            <Link
+              href="/"
+              className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-emerald-100 shadow-inner group hover:scale-105 transition-transform"
+            >
+              <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                <path d="M12 2L14.2 8.2L20.4 10.4L14.2 12.6L12 18.8L9.8 12.6L3.6 10.4L9.8 8.2L12 2Z" />
                 <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M13 10V3L4 14h7v7l9-11h-7z"
+                  d="M19 16L20.1 19.1L23.2 20.2L20.1 21.3L19 24.4L17.9 21.3L14.8 20.2L17.9 19.1L19 16Z"
+                  opacity="0.85"
                 />
               </svg>
-            </div>
+            </Link>
             <div className="flex flex-col">
-              <span className="font-bold text-sm tracking-tight text-white flex items-center gap-1.5">
-                AI Charming
-                <span className="text-[10px] bg-sidebarActive text-emerald-300 font-mono px-1.5 py-0.5 rounded uppercase">
-                  Bot
-                </span>
+              <span className="text-white font-semibold text-[15px] tracking-tight">
+                AI Charming Chat Bot
               </span>
-              <span className="text-[11px] text-emerald-200/60 font-medium">WORKSPACE</span>
             </div>
           </div>
 
           {/* Nav List */}
-          <div className="p-3">
-            <div className="px-3 pb-2 pt-2 text-[10px] font-semibold text-emerald-300/40 uppercase tracking-wider font-mono">
-              เมนูหลัก
+          <div className="px-3 pt-6">
+            <div className="px-3 pb-2 text-[11px] font-semibold text-[#A3B8A8]/60 tracking-wider uppercase font-mono">
+              WORKSPACE
             </div>
-            <nav className="space-y-1">
+            <nav className="space-y-1.5">
               {/* 1. แดชบอร์ด */}
               <Link
                 href="/dashboard"
                 onClick={onCloseMobile}
                 className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl font-medium text-[13.5px] transition-colors ${
                   isDashboardActive
-                    ? "text-white bg-sidebarActive shadow-sm"
-                    : "text-emerald-100/70 hover:text-white hover:bg-sidebarHover"
+                    ? "text-white bg-[#435548] shadow-sm"
+                    : "text-[#A3B8A8] hover:text-white hover:bg-[#344638]"
                 }`}
               >
                 <svg
@@ -122,8 +129,8 @@ export default function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
                 onClick={onCloseMobile}
                 className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl font-medium text-[13.5px] transition-colors ${
                   isBotsActive
-                    ? "text-white bg-sidebarActive shadow-sm"
-                    : "text-emerald-100/70 hover:text-white hover:bg-sidebarHover"
+                    ? "text-white bg-[#435548] shadow-sm"
+                    : "text-[#A3B8A8] hover:text-white hover:bg-[#344638]"
                 }`}
               >
                 <svg
@@ -149,8 +156,8 @@ export default function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
                 onClick={onCloseMobile}
                 className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl font-medium text-[13.5px] transition-colors ${
                   isKeysActive
-                    ? "text-white bg-sidebarActive shadow-sm"
-                    : "text-emerald-100/70 hover:text-white hover:bg-sidebarHover"
+                    ? "text-white bg-[#435548] shadow-sm"
+                    : "text-[#A3B8A8] hover:text-white hover:bg-[#344638]"
                 }`}
               >
                 <svg
@@ -173,12 +180,12 @@ export default function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
 
               {/* 4. ประวัติการใช้งาน */}
               <Link
-                href="/dashboard/analytics"
+                href="/dashboard?tab=logs"
                 onClick={onCloseMobile}
                 className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl font-medium text-[13.5px] transition-colors ${
                   isLogsActive
-                    ? "text-white bg-sidebarActive shadow-sm"
-                    : "text-emerald-100/70 hover:text-white hover:bg-sidebarHover"
+                    ? "text-white bg-[#435548] shadow-sm"
+                    : "text-[#A3B8A8] hover:text-white hover:bg-[#344638]"
                 }`}
               >
                 <svg
@@ -203,10 +210,16 @@ export default function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
               <Link
                 href="/dashboard?tab=billing"
                 onClick={onCloseMobile}
-                className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl font-medium text-[13.5px] transition-colors text-emerald-100/70 hover:text-white hover:bg-sidebarHover"
+                className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl font-medium text-[13.5px] transition-colors ${
+                  isBillingActive
+                    ? "text-white bg-[#435548] shadow-sm"
+                    : "text-[#A3B8A8] hover:text-white hover:bg-[#344638]"
+                }`}
               >
                 <svg
-                  className="w-4 h-4 shrink-0"
+                  className={`w-4 h-4 shrink-0 ${
+                    isBillingActive ? "text-emerald-200" : ""
+                  }`}
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -221,18 +234,18 @@ export default function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
         </div>
 
         {/* User Profile Footer Area */}
-        <div className="p-3 border-t border-emerald-950/40">
-          <div className="flex items-center justify-between p-2 rounded-xl hover:bg-sidebarHover/80 transition">
+        <div className="p-3 border-t border-[#1F2C22]">
+          <div className="flex items-center justify-between p-2 rounded-xl hover:bg-[#344638]/50 transition">
             <div className="flex items-center gap-3 overflow-hidden">
-              <div className="w-8 h-8 rounded-full bg-white text-sidebar font-semibold text-xs flex items-center justify-center shadow shrink-0">
+              <div className="w-8 h-8 rounded-full bg-white text-[#27382B] font-bold text-xs flex items-center justify-center shadow shrink-0">
                 {avatarLetter}
               </div>
               <div className="flex flex-col text-left truncate">
                 <span className="text-white text-xs font-semibold leading-tight truncate">
                   {currentUser ? currentUser.email : "เข้าสู่ระบบ"}
                 </span>
-                <span className="text-[11px] text-emerald-200/70 leading-tight">
-                  {currentUser ? `${currentUser.creditBalance} เครดิต` : "Guest"}
+                <span className="text-[11px] text-[#A3B8A8] leading-tight">
+                  {creditDisplay}
                 </span>
               </div>
             </div>
@@ -241,7 +254,7 @@ export default function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
                 type="button"
                 onClick={handleLogout}
                 title="ออกจากระบบ"
-                className="text-emerald-200/60 hover:text-rose-300 p-1.5 rounded-md transition cursor-pointer"
+                className="text-[#A3B8A8] hover:text-rose-300 p-1.5 rounded-md transition cursor-pointer"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -251,7 +264,7 @@ export default function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
               <Link
                 href="/login"
                 title="เข้าสู่ระบบ"
-                className="text-emerald-200/60 hover:text-white p-1.5 rounded-md transition"
+                className="text-[#A3B8A8] hover:text-white p-1.5 rounded-md transition"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
@@ -262,5 +275,13 @@ export default function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
         </div>
       </aside>
     </>
+  );
+}
+
+export default function Sidebar(props: SidebarProps) {
+  return (
+    <Suspense fallback={null}>
+      <SidebarNavContent {...props} />
+    </Suspense>
   );
 }

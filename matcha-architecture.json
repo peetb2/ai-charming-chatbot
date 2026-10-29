@@ -34,7 +34,7 @@
     { "id": "embedding_engine", "type": "cloud", "label": "Embedding Engine", "sublabel": "text-embedding-004", "pos": [570, 120], "size": [160, 60], "tag": "768-dim Vectors" },
     { "id": "vector_db", "type": "database", "label": "Vector Database", "sublabel": "Supabase pgvector", "pos": [900, 120], "size": [160, 60], "tag": "bot_id Cosine Index" },
     { "id": "postgres", "type": "database", "label": "PostgreSQL DB", "sublabel": "Users, Bots, Keys, Credits", "pos": [900, 320], "size": [160, 60], "tag": "Relational (Supabase)" },
-    { "id": "gemini_llm", "type": "cloud", "label": "Gemini AI Engine", "sublabel": "gemini-1.5-flash", "pos": [570, 500], "size": [160, 60], "tag": "RAG Generation" }
+    { "id": "gemini_llm", "type": "cloud", "label": "Gemini AI Engine", "sublabel": "gemini-3.5-flash-lite", "pos": [570, 500], "size": [160, 60], "tag": "RAG Generation" }
   ],
   "boundaries": [
     { "kind": "region", "label": "MatchaChatbot Application Tier (Next.js 14)", "wraps": ["widget_js", "dashboard_ui", "api_gateway"] },

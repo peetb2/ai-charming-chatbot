@@ -30,8 +30,10 @@ model Bot {
   user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   name           String
   systemPrompt   String
-  model          String     @default("gemini-1.5-flash")
+  model          String     @default("gemini-3.5-flash-lite")
   allowedDomains String     @default("*")
+  websiteUrl     String?
+  lastCrawledAt  DateTime?
   isActive       Boolean    @default(true)
   createdAt      DateTime   @default(now())
 
@@ -48,8 +50,9 @@ model KnowledgeDocument {
   botId       String
   bot         Bot              @relation(fields: [botId], references: [id], onDelete: Cascade)
   title       String
-  fileType    String           @default("text") // "pdf", "docx", "txt", "faq", "markdown"
+  fileType    String           @default("text") // "pdf", "docx", "txt", "faq", "markdown", "website"
   fileSize    String?
+  sourceUrl   String?
   chunkCount  Int              @default(0)
   status      String           @default("ready") // "indexing", "ready", "error"
   createdAt   DateTime         @default(now())

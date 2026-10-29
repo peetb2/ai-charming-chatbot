@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AlertCircle, Sparkles } from "lucide-react";
+import { setCachedUser } from "@/lib/client-auth";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -59,6 +60,10 @@ export default function RegisterPage() {
               : String(data.details)
             : data.error || "Failed to create account"
         );
+      }
+
+      if (data?.user) {
+        setCachedUser(data.user);
       }
 
       router.push("/dashboard/bots");

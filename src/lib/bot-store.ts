@@ -8,6 +8,8 @@ export interface BotItem {
   knowledgeCount?: number;
   usageCount?: number;
   systemPrompt?: string;
+  websiteUrl?: string | null;
+  lastCrawledAt?: string | null;
 }
 
 export const INITIAL_BOTS: BotItem[] = [];

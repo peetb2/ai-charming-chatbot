@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { getCachedUser, fetchCurrentUser, UserSessionData } from "@/lib/client-auth";
 
 interface ChatMessage {
   sender: "bot" | "visitor";
@@ -12,11 +13,25 @@ interface ChatMessage {
 export default function Home() {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
+  const [currentUser, setCurrentUser] = useState<UserSessionData | null>(null);
 
   // Active section state for indicator dots and nav
   const [activeSection, setActiveSection] = useState<
     "product" | "how-it-works" | "integration"
   >("product");
+
+  useEffect(() => {
+    setCurrentUser(getCachedUser());
+    fetchCurrentUser().then((user) => {
+      if (user) setCurrentUser(user);
+    });
+
+    const onAuthChange = () => {
+      setCurrentUser(getCachedUser());
+    };
+    window.addEventListener("matcha_auth_change", onAuthChange);
+    return () => window.removeEventListener("matcha_auth_change", onAuthChange);
+  }, []);
 
   // Chat interactive demo state
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -187,10 +202,14 @@ export default function Home() {
   };
 
   const handleStartNow = () => {
-    showToast("Redirecting to onboarding flow...");
-    setTimeout(() => {
-      router.push("/register");
-    }, 700);
+    if (currentUser) {
+      router.push("/dashboard/bots");
+    } else {
+      showToast("Redirecting to onboarding flow...");
+      setTimeout(() => {
+        router.push("/register");
+      }, 500);
+    }
   };
 
   const handleTalkToUs = () => {
@@ -256,22 +275,38 @@ export default function Home() {
             >
               Integration
             </button>
-            <Link
-              href="/login"
-              className="text-charcoal/75 hover:text-sage-700 transition-colors"
-            >
-              Sign in
-            </Link>
+            {!currentUser && (
+              <Link
+                href="/login"
+                className="text-charcoal/75 hover:text-sage-700 transition-colors"
+              >
+                Sign in
+              </Link>
+            )}
           </nav>
 
           {/* Right Action */}
           <div>
-            <Link
-              href="/register"
-              className="font-mono text-xs px-5 py-1.5 rounded-full border border-sage-500/70 text-charcoal hover:bg-sage-500 hover:text-white transition duration-200 font-semibold inline-block"
-            >
-              Sign up
-            </Link>
+            {currentUser ? (
+              <div className="flex items-center gap-2">
+                <Link
+                  href="/dashboard"
+                  className="font-mono text-xs px-4 py-1.5 rounded-full bg-[#6E9177] text-white hover:bg-[#587A60] transition duration-200 font-semibold inline-flex items-center gap-1.5 shadow-sm"
+                >
+                  <span>ไปยังแดชบอร์ด</span>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                  </svg>
+                </Link>
+              </div>
+            ) : (
+              <Link
+                href="/register"
+                className="font-mono text-xs px-5 py-1.5 rounded-full border border-sage-500/70 text-charcoal hover:bg-sage-500 hover:text-white transition duration-200 font-semibold inline-block"
+              >
+                Sign up
+              </Link>
+            )}
           </div>
         </header>
       </div>
@@ -343,10 +378,10 @@ export default function Home() {
             {/* CTAs */}
             <div className="flex flex-wrap items-center gap-3 pt-1">
               <Link
-                href="/register"
+                href={currentUser ? "/dashboard" : "/register"}
                 className="font-mono text-xs font-bold px-6 py-2.5 rounded-full bg-[#6E9177] text-white shadow-sm hover:bg-[#587A60] active:scale-[0.98] transition"
               >
-                Create your bot
+                {currentUser ? "ไปยังแดชบอร์ด" : "Create your bot"}
               </Link>
               <button
                 type="button"

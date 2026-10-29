@@ -9,6 +9,7 @@ const knowledgeIngestSchema = z.object({
   content: z.string().min(1, "Document content is required"),
   fileType: z.string().default("text"),
   fileSize: z.string().optional(),
+  sourceUrl: z.string().optional().nullable(),
 });
 
 interface RouteParams {
@@ -57,6 +58,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
         title: doc.title,
         fileType: doc.fileType,
         fileSize: doc.fileSize,
+        sourceUrl: doc.sourceUrl,
         chunkCount: doc._count.chunks,
         status: doc.status,
         createdAt: doc.createdAt,
@@ -113,6 +115,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         title,
         fileType,
         fileSize: fileSize || `${(content.length / 1024).toFixed(1)} KB`,
+        sourceUrl: parse.data.sourceUrl || null,
         chunkCount: textChunks.length,
         status: "indexing",
       },

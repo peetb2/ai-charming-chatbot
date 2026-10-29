@@ -6,8 +6,10 @@ import { prisma } from "@/lib/prisma";
 const botCreateSchema = z.object({
   name: z.string().min(1, "Bot name is required").max(100),
   systemPrompt: z.string().min(1, "System prompt is required"),
-  model: z.string().default("gemini-1.5-flash"),
+  model: z.string().default("gemini-3.5-flash-lite"),
   allowedDomains: z.union([z.string(), z.array(z.string())]).default("*").transform((v) => Array.isArray(v) ? v.join(",") : v),
+  websiteUrl: z.string().optional().nullable().or(z.literal("")),
+  lastCrawledAt: z.union([z.string(), z.date()]).optional().nullable().transform((v) => (v ? new Date(v) : null)),
   isActive: z.boolean().default(true),
 });
 

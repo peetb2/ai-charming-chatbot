@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Sidebar from "@/components/dashboard/Sidebar";
+import Header from "@/components/dashboard/Header";
 import {
   getStoredApiKeys,
   removeStoredApiKey,
@@ -118,84 +119,20 @@ export default function ApiKeysPage() {
       {/* Main Content Area */}
       <main className="flex-1 lg:ml-64 min-h-screen flex flex-col overflow-y-auto">
         {/* Top App Bar Header */}
-        <header className="h-20 bg-white/80 backdrop-blur-md px-5 sm:px-8 flex items-center justify-between sticky top-0 z-20 border-b border-borderLight/90">
-          <div className="flex items-center gap-3">
-            {/* Mobile Hamburger Button */}
-            <button
-              type="button"
-              onClick={() => setMobileSidebarOpen(true)}
-              className="p-2 rounded-xl text-slate-700 hover:bg-slate-200/60 lg:hidden"
-              aria-label="Open navigation menu"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
-
-            <div>
-              <div className="flex items-center gap-2.5">
-                <h1 className="text-lg sm:text-xl font-bold text-textMain tracking-tight">
-                  คีย์ API
-                </h1>
-                {/* Status Badge */}
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[#EBF3EE] text-[#385241] border border-[#C9DCCF]">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#4E6955] animate-pulse"></span>
-                  API Status: ปกติ
-                </span>
-              </div>
-              <p className="text-xs text-textMuted mt-0.5 hidden sm:block">
-                จัดการ credentials สำหรับเชื่อมต่อ Botwise API
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {/* Primary Action Button: + สร้างคีย์ใหม่ */}
+        <Header
+          title="คีย์ API"
+          subtitle="จัดการ credentials สำหรับเชื่อมต่อ Botwise API"
+          onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
+          actionButton={
             <Link
               href="/dashboard/keys/new"
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#4E6955] hover:bg-[#3E5343] text-white text-xs font-semibold shadow-sm transition active:scale-[0.98] cursor-pointer"
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-brandGreen hover:bg-brandGreenHover text-white text-xs font-semibold shadow-sm transition active:scale-[0.98] cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>+ สร้างคีย์ใหม่</span>
             </Link>
-
-            {/* Notification Bell */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setNotificationOpen(!notificationOpen)}
-                className="w-10 h-10 rounded-xl bg-white border border-borderLight flex items-center justify-center text-slate-600 hover:text-[#4E6955] hover:border-[#4E6955]/40 transition shadow-sm cursor-pointer relative"
-                aria-label="Toggle notifications"
-              >
-                <Bell className="w-4 h-4" />
-                <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-[#4E6955] rounded-full ring-2 ring-white"></span>
-              </button>
-
-              {/* Notification Popover */}
-              {notificationOpen && (
-                <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-borderLight p-4 z-50 text-left">
-                  <div className="flex items-center justify-between pb-3 border-b border-borderLight">
-                    <span className="font-bold text-sm text-textMain">การแจ้งเตือนระบบ</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        showToast("ทำเครื่องหมายว่าอ่านแล้ว");
-                        setNotificationOpen(false);
-                      }}
-                      className="text-[11px] text-[#4E6955] font-medium cursor-pointer hover:underline"
-                    >
-                      อ่านทั้งหมด
-                    </button>
-                  </div>
-                  <div className="py-6 text-center text-xs text-textMuted">
-                    <p className="font-medium text-textMain">ไม่มีการแจ้งเตือนค้างอยู่</p>
-                    <p className="text-[11px] text-textMuted mt-0.5">ระบบ Botwise API และกุญแจเชื่อมต่อทำงานปกติ</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </header>
+          }
+        />
 
         {/* Page Body Container */}
         <div className="p-5 sm:p-8 max-w-7xl w-full mx-auto space-y-6">
@@ -237,9 +174,18 @@ export default function ApiKeysPage() {
                   คีย์ทั้งหมด
                 </h2>
               </div>
-              <span className="text-xs text-textMuted font-mono bg-slate-50 px-2.5 py-1 rounded-lg border border-borderLight">
-                {apiKeys.length} คีย์ที่ใช้งาน
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-textMuted font-mono bg-slate-50 px-2.5 py-1 rounded-lg border border-borderLight">
+                  {apiKeys.length} คีย์ที่ใช้งาน
+                </span>
+                <Link
+                  href="/dashboard/keys/new"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brandGreen hover:bg-brandGreenHover text-white text-xs font-semibold shadow-sm transition active:scale-[0.98] cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ สร้างคีย์ใหม่</span>
+                </Link>
+              </div>
             </div>
 
             {/* Table View */}

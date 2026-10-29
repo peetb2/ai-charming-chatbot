@@ -35,3 +35,7 @@ prisma/*.db-journal
 next-env.d.ts
 .DS_Store
 *.pem
+
+# Evaluation & benchmarks (excluded)
+BERTSCORE_SUMMARY.txt
+scripts/

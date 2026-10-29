@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
         userId: newUser.id,
         name: "Customer Support Bot",
         systemPrompt: "You are a helpful customer support AI assistant for our website.",
-        model: "gemini-1.5-flash",
+        model: "gemini-3.5-flash-lite",
         allowedDomains: "*",
         isActive: true,
       },

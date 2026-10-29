@@ -55,7 +55,7 @@ export default function NewApiKeyPage() {
             id: b.id,
             name: b.name,
             desc: b.systemPrompt || "",
-            model: b.model || "gemini-1.5-flash",
+            model: b.model || "gemini-3.5-flash-lite",
             lastActive: "เพิ่งสร้าง",
             status: b.isActive ? "active" : "paused",
           }));

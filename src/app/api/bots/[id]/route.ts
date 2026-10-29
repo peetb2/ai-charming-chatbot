@@ -8,6 +8,8 @@ const botUpdateSchema = z.object({
   systemPrompt: z.string().min(1).optional(),
   model: z.string().optional(),
   allowedDomains: z.union([z.string(), z.array(z.string())]).optional().transform((v) => (v ? (Array.isArray(v) ? v.join(",") : v) : undefined)),
+  websiteUrl: z.string().optional().nullable().or(z.literal("")),
+  lastCrawledAt: z.union([z.string(), z.date()]).optional().nullable().transform((v) => (v ? new Date(v) : undefined)),
   isActive: z.boolean().optional(),
 });
 

@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import Sidebar from "@/components/dashboard/Sidebar";
 
 type TabType = "dashboard" | "bots" | "apikeys" | "logs" | "billing";
 type BotSubViewType = "form" | "list";
@@ -41,8 +42,10 @@ interface LogItem {
   time: string;
 }
 
-export default function AdminDashboardPage() {
+function AdminDashboardContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get("tab") as TabType | null;
   const [currentTab, setCurrentTab] = useState<TabType>("dashboard");
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
@@ -61,26 +64,25 @@ export default function AdminDashboardPage() {
   >([]);
   const [appOrigin, setAppOrigin] = useState("http://localhost:3000");
 
-  // Sync tab from URL query params and load real database records
+  useEffect(() => {
+    if (tabParam === "bots") {
+      router.push("/dashboard/bots");
+      return;
+    }
+    if (tabParam === "apikeys") {
+      router.push("/dashboard/keys");
+      return;
+    }
+    if (tabParam && ["dashboard", "logs", "billing"].includes(tabParam)) {
+      setCurrentTab(tabParam);
+    } else if (!tabParam) {
+      setCurrentTab("dashboard");
+    }
+  }, [tabParam, router]);
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       setAppOrigin(window.location.origin);
-      const params = new URLSearchParams(window.location.search);
-      const tabParam = params.get("tab") as TabType;
-      if (tabParam === "bots") {
-        window.location.replace("/dashboard/bots");
-        return;
-      }
-      if (tabParam === "apikeys") {
-        window.location.replace("/dashboard/keys");
-        return;
-      }
-      if (
-        tabParam &&
-        ["dashboard", "logs", "billing"].includes(tabParam)
-      ) {
-        setCurrentTab(tabParam);
-      }
     }
 
     // Fetch authenticated user
@@ -105,7 +107,7 @@ export default function AdminDashboardPage() {
             id: b.id,
             name: b.name,
             desc: b.systemPrompt ? b.systemPrompt.slice(0, 90) : "บอทผู้ช่วย AI สำหรับตอบคำถาม",
-            model: b.model || "gemini-1.5-flash",
+            model: b.model || "gemini-3.5-flash-lite",
             lastActive: b.createdAt
               ? `สร้างเมื่อ ${new Date(b.createdAt).toLocaleDateString("th-TH")}`
               : "เพิ่งสร้าง",
@@ -212,7 +214,7 @@ export default function AdminDashboardPage() {
   // Bot creation form state
   const [formBotName, setFormBotName] = useState("");
   const [formBotDesc, setFormBotDesc] = useState("");
-  const [formBotModel, setFormBotModel] = useState("gemini-1.5-flash");
+  const [formBotModel, setFormBotModel] = useState("gemini-3.5-flash-lite");
   const [formBotTone, setFormBotTone] = useState("");
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -370,202 +372,11 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="w-full min-h-screen topo-bg-warm text-textMain flex antialiased font-sans">
-      {/* Mobile Drawer Overlay */}
-      {mobileSidebarOpen && (
-        <div
-          onClick={() => setMobileSidebarOpen(false)}
-          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm lg:hidden"
-        />
-      )}
-
-      {/* ========================================================
-          LEFT NAVIGATION SIDEBAR (Sage Green #334539)
-         ======================================================== */}
-      <aside
-        className={`w-64 bg-sidebar text-emerald-100/90 flex flex-col justify-between shrink-0 fixed inset-y-0 left-0 z-50 transition-transform duration-300 lg:translate-x-0 border-r border-sidebarBorder select-none ${
-          mobileSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-        }`}
-      >
-        <div>
-          {/* Brand Logo Header */}
-          <div className="h-20 flex items-center px-5 gap-3 border-b border-emerald-950/40">
-            <Link
-              href="/"
-              className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-emerald-100 shadow-inner group hover:scale-105 transition-transform"
-            >
-              <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-                <path d="M12 2L14.2 8.2L20.4 10.4L14.2 12.6L12 18.8L9.8 12.6L3.6 10.4L9.8 8.2L12 2Z" />
-                <path
-                  d="M19 16L20.1 19.1L23.2 20.2L20.1 21.3L19 24.4L17.9 21.3L14.8 20.2L17.9 19.1L19 16Z"
-                  opacity="0.85"
-                />
-              </svg>
-            </Link>
-            <div className="flex flex-col">
-              <span className="text-white font-semibold text-[15px] tracking-tight">
-                AI Charming Chat Bot
-              </span>
-            </div>
-          </div>
-
-          {/* Navigation Section */}
-          <div className="px-3 pt-6">
-            <div className="px-3 pb-2 text-[11px] font-semibold text-emerald-200/50 tracking-wider uppercase font-mono">
-              WORKSPACE
-            </div>
-
-            <nav className="space-y-1.5">
-              {/* 1. แดชบอร์ด */}
-              <button
-                type="button"
-                onClick={() => switchTab("dashboard")}
-                className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl font-medium text-[13.5px] transition-colors cursor-pointer ${
-                  currentTab === "dashboard"
-                    ? "text-white bg-sidebarActive shadow-sm"
-                    : "text-emerald-100/70 hover:text-white hover:bg-sidebarHover"
-                }`}
-              >
-                <svg
-                  className={`w-4 h-4 shrink-0 ${
-                    currentTab === "dashboard" ? "text-emerald-200" : ""
-                  }`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <rect x="3" y="3" width="7" height="7" rx="1.5" strokeWidth="2" />
-                  <rect x="14" y="3" width="7" height="7" rx="1.5" strokeWidth="2" />
-                  <rect x="14" y="14" width="7" height="7" rx="1.5" strokeWidth="2" />
-                  <rect x="3" y="14" width="7" height="7" rx="1.5" strokeWidth="2" />
-                </svg>
-                <span>แดชบอร์ด</span>
-              </button>
-
-              {/* 2. จัดการบอท */}
-              <Link
-                href="/dashboard/bots"
-                className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl font-medium text-[13.5px] transition-colors text-emerald-100/70 hover:text-white hover:bg-sidebarHover cursor-pointer"
-              >
-                <svg
-                  className="w-4 h-4 shrink-0 text-emerald-100/70"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <rect x="4" y="8" width="16" height="12" rx="2" strokeWidth="2" />
-                  <circle cx="9" cy="13" r="1.25" fill="currentColor" />
-                  <circle cx="15" cy="13" r="1.25" fill="currentColor" />
-                  <path d="M12 4v4" strokeWidth="2" strokeLinecap="round" />
-                  <path d="M2 13h2m16 0h2" strokeWidth="2" strokeLinecap="round" />
-                </svg>
-                <span>จัดการบอท</span>
-              </Link>
-
-              {/* 3. คีย์ API */}
-              <Link
-                href="/dashboard/keys"
-                onClick={() => setMobileSidebarOpen(false)}
-                className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl font-medium text-[13.5px] transition-colors text-emerald-100/70 hover:text-white hover:bg-sidebarHover cursor-pointer"
-              >
-                <svg
-                  className="w-4 h-4 shrink-0"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <circle cx="8" cy="8" r="4" strokeWidth="2" />
-                  <path
-                    d="M10.8 10.8L18 18m-2-2l2 2m0-3l2 2"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  />
-                </svg>
-                <span>คีย์ API</span>
-              </Link>
-
-              {/* 4. ประวัติการใช้งาน */}
-              <button
-                type="button"
-                onClick={() => switchTab("logs")}
-                className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl font-medium text-[13.5px] transition-colors cursor-pointer ${
-                  currentTab === "logs"
-                    ? "text-white bg-sidebarActive shadow-sm"
-                    : "text-emerald-100/70 hover:text-white hover:bg-sidebarHover"
-                }`}
-              >
-                <svg
-                  className={`w-4 h-4 shrink-0 ${
-                    currentTab === "logs" ? "text-emerald-200" : ""
-                  }`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    d="M9 12h6m-6 4h4m-7 4h12a2 2 0 002-2V6a2 2 0 00-2-2H8l-4 4v12a2 2 0 002 2z"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                <span>ประวัติการใช้งาน</span>
-              </button>
-
-              {/* 5. การชำระเงิน */}
-              <button
-                type="button"
-                onClick={() => switchTab("billing")}
-                className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl font-medium text-[13.5px] transition-colors cursor-pointer ${
-                  currentTab === "billing"
-                    ? "text-white bg-sidebarActive shadow-sm"
-                    : "text-emerald-100/70 hover:text-white hover:bg-sidebarHover"
-                }`}
-              >
-                <svg
-                  className={`w-4 h-4 shrink-0 ${
-                    currentTab === "billing" ? "text-emerald-200" : ""
-                  }`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <rect x="2" y="5" width="20" height="14" rx="2" strokeWidth="2" />
-                  <line x1="2" y1="10" x2="22" y2="10" strokeWidth="2" />
-                </svg>
-                <span>การชำระเงิน</span>
-              </button>
-            </nav>
-          </div>
-        </div>
-
-        {/* User Profile Footer Area */}
-        <div className="p-3 border-t border-emerald-950/40">
-          <div className="flex items-center justify-between p-2 rounded-xl hover:bg-sidebarHover/80 transition cursor-pointer">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-white text-sidebar font-semibold text-xs flex items-center justify-center shadow">
-                {currentUser ? currentUser.email.charAt(0).toUpperCase() : "A"}
-              </div>
-              <div className="flex flex-col text-left">
-                <span className="text-white text-xs font-semibold leading-tight truncate max-w-[120px]">
-                  {currentUser ? currentUser.email.split("@")[0] : "Admin"}
-                </span>
-                <span className="text-[11px] text-emerald-200/70 leading-tight">
-                  Starter Plan
-                </span>
-              </div>
-            </div>
-            <Link
-              href="/"
-              title="กลับสู่หน้าหลัก"
-              className="text-emerald-200/60 hover:text-white p-1 rounded-md transition"
-            >
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM18 10a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
-            </Link>
-          </div>
-        </div>
-      </aside>
+      {/* Unified Global Sidebar */}
+      <Sidebar
+        mobileOpen={mobileSidebarOpen}
+        onCloseMobile={() => setMobileSidebarOpen(false)}
+      />
 
       {/* ========================================================
           MAIN CONTENT AREA
@@ -1864,5 +1675,19 @@ export default function AdminDashboardPage() {
         {toastMessage || ""}
       </div>
     </div>
+  );
+}
+
+export default function AdminDashboardPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="w-full min-h-screen topo-bg-warm flex items-center justify-center text-textMuted font-mono text-sm">
+          กำลังโหลดแดชบอร์ด...
+        </div>
+      }
+    >
+      <AdminDashboardContent />
+    </Suspense>
   );
 }

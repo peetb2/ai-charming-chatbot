@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import Sidebar from "@/components/dashboard/Sidebar";
+import Header from "@/components/dashboard/Header";
 import { BotItem } from "@/lib/bot-store";
 import {
   Bot,
@@ -22,6 +23,8 @@ import {
   Filter,
   X,
   Database,
+  Globe,
+  RefreshCw,
 } from "lucide-react";
 
 interface KnowledgeDocItem {
@@ -29,6 +32,7 @@ interface KnowledgeDocItem {
   title: string;
   fileType: string;
   fileSize: string | null;
+  sourceUrl?: string | null;
   chunkCount: number;
   status: string;
   createdAt: string;
@@ -60,11 +64,23 @@ export default function BotListPage() {
   const [botDocuments, setBotDocuments] = useState<KnowledgeDocItem[]>([]);
   const [docsLoading, setDocsLoading] = useState(false);
 
-  // Modal Upload Form State
+  // Syncing state
+  const [syncingBotId, setSyncingBotId] = useState<string | null>(null);
+
+  // Modal Upload Form State (Files vs Website URL)
+  const [modalUploadMode, setModalUploadMode] = useState<"files" | "crawl">("files");
   const [uploadTitle, setUploadTitle] = useState("");
   const [uploadContent, setUploadContent] = useState("");
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const modalFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Modal Website Crawl State
+  const [modalWebsiteUrl, setModalWebsiteUrl] = useState("");
+  const [modalCrawlDepth, setModalCrawlDepth] = useState(2);
+  const [modalCrawlMaxPages, setModalCrawlMaxPages] = useState(15);
+  const [modalReSyncClean, setModalReSyncClean] = useState(true);
+  const [modalIsCrawling, setModalIsCrawling] = useState(false);
+  const [modalCrawlProgress, setModalCrawlProgress] = useState("");
 
   // Semantic Search Test State
   const [testQuery, setTestQuery] = useState("");
@@ -83,7 +99,9 @@ export default function BotListPage() {
             name: b.name,
             desc: b.systemPrompt ? b.systemPrompt.slice(0, 95) : "บอทผู้ช่วย AI สำหรับตอบคำถามและบริการ",
             systemPrompt: b.systemPrompt,
-            model: b.model || "gemini-1.5-flash",
+            model: b.model || "gemini-3.5-flash-lite",
+            websiteUrl: b.websiteUrl,
+            lastCrawledAt: b.lastCrawledAt,
             lastActive: b.createdAt
               ? `สร้างเมื่อ ${new Date(b.createdAt).toLocaleDateString("th-TH")}`
               : "เพิ่งสร้าง",
@@ -130,10 +148,210 @@ export default function BotListPage() {
     }
   };
 
+  // Manual Re-sync Website
+  const handleResyncWebsite = async (bot: BotItem, customUrl?: string) => {
+    const targetUrl = customUrl || bot.websiteUrl;
+    if (!targetUrl) {
+      showToast("บอทตัวนี้ยังไม่ได้ระบุ URL เว็บไซต์");
+      return;
+    }
+
+    setSyncingBotId(bot.id);
+    showToast(`กำลังเริ่มดึงข้อมูลอัปเดตจาก ${targetUrl}...`);
+
+    try {
+      const res = await fetch("/api/crawl", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          botId: bot.id,
+          url: targetUrl,
+          reSync: true,
+          maxDepth: 2,
+          maxPages: 15,
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error || "เกิดข้อผิดพลาดในการซิงค์ข้อมูลเว็บไซต์");
+      }
+
+      const updatedCount = json.documentsCreated ?? json.pagesCrawled;
+
+      // Update bot in main list
+      setBotsData((prev) =>
+        prev.map((b) =>
+          b.id === bot.id
+            ? {
+                ...b,
+                websiteUrl: json.rootUrl || targetUrl,
+                lastCrawledAt: new Date().toISOString(),
+                knowledgeCount: updatedCount || b.knowledgeCount,
+              }
+            : b
+        )
+      );
+
+      // If open in modal, refresh
+      if (managingBot?.id === bot.id) {
+        setManagingBot((prev) =>
+          prev
+            ? {
+                ...prev,
+                websiteUrl: json.rootUrl || targetUrl,
+                lastCrawledAt: new Date().toISOString(),
+                knowledgeCount: updatedCount || prev.knowledgeCount,
+              }
+            : null
+        );
+
+        const docRes = await fetch(`/api/bots/${bot.id}/knowledge`);
+        if (docRes.ok) {
+          const docData = await docRes.json();
+          setBotDocuments(docData.documents || []);
+        }
+      }
+
+      showToast(`ซิงค์ข้อมูลเว็บไซต์สำเร็จ! ดึงและเวกเตอร์ ${updatedCount || 0} หน้าเว็บล่าสุดเรียบร้อย`);
+    } catch (err: any) {
+      console.error("[Re-sync Error]", err);
+      showToast(err.message || "ซิงค์ข้อมูลเว็บไซต์ไม่สำเร็จ");
+    } finally {
+      setSyncingBotId(null);
+    }
+  };
+
+  // Crawl & Ingest Website directly from inside Knowledge Modal
+  const handleModalCrawlWebsite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!managingBot) return;
+
+    let targetUrl = modalWebsiteUrl.trim();
+    if (!targetUrl) {
+      showToast("กรุณาระบุ URL เว็บไซต์");
+      return;
+    }
+
+    if (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://")) {
+      targetUrl = "https://" + targetUrl;
+      setModalWebsiteUrl(targetUrl);
+    }
+
+    setModalIsCrawling(true);
+    setModalCrawlProgress("กำลังเชื่อมต่อเว็บไซต์และตรวจสอบโครงสร้าง...");
+
+    try {
+      const res = await fetch("/api/crawl", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          botId: managingBot.id,
+          url: targetUrl,
+          maxDepth: modalCrawlDepth,
+          maxPages: modalCrawlMaxPages,
+          reSync: modalReSyncClean,
+          stream: true,
+        }),
+      });
+
+      if (!res.ok) {
+        const errorJson = await res.json().catch(() => ({}));
+        throw new Error(errorJson.error || "เกิดข้อผิดพลาดในการดึงข้อมูลจากเว็บไซต์");
+      }
+
+      // Read SSE stream
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let completedData: any = null;
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith("data: ")) {
+              try {
+                const event = JSON.parse(trimmed.slice(6));
+                if (event.type === "progress") {
+                  if (event.stage === "discovering") {
+                    setModalCrawlProgress(event.message || "กำลังค้นหาหน้าเว็บ...");
+                  } else if (event.stage === "crawling") {
+                    setModalCrawlProgress(`กำลังอ่าน ${event.discoveredCount || ""} หน้า... (อ่านแล้ว ${event.crawledCount || 0} หน้า)`);
+                  } else if (event.stage === "indexing") {
+                    setModalCrawlProgress(event.message || "กำลังแปลงเวกเตอร์ 768 มิติ...");
+                  }
+                } else if (event.type === "completed") {
+                  completedData = event;
+                } else if (event.type === "error") {
+                  throw new Error(event.error || "ดึงข้อมูลไม่สำเร็จ");
+                }
+              } catch (parseErr: any) {
+                if (parseErr.message && !parseErr.message.includes("JSON")) {
+                  throw parseErr;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Refresh documents
+      const docRes = await fetch(`/api/bots/${managingBot.id}/knowledge`);
+      if (docRes.ok) {
+        const docData = await docRes.json();
+        setBotDocuments(docData.documents || []);
+      }
+
+      const totalDocs = completedData?.documentsCreated || completedData?.pagesCrawled || 0;
+      setManagingBot((prev) =>
+        prev
+          ? {
+              ...prev,
+              websiteUrl: completedData?.rootUrl || targetUrl,
+              lastCrawledAt: new Date().toISOString(),
+              knowledgeCount: totalDocs || prev.knowledgeCount,
+            }
+          : null
+      );
+
+      setBotsData((prev) =>
+        prev.map((b) =>
+          b.id === managingBot.id
+            ? {
+                ...b,
+                websiteUrl: completedData?.rootUrl || targetUrl,
+                lastCrawledAt: new Date().toISOString(),
+                knowledgeCount: totalDocs || b.knowledgeCount,
+              }
+            : b
+        )
+      );
+
+      showToast(`ดึงข้อมูลเว็บไซต์สำเร็จ! นำเข้าและคำนวณเวกเตอร์ ${totalDocs} หน้าเว็บเรียบร้อย`);
+      setModalTab("docs");
+    } catch (err: any) {
+      console.error("[Modal Crawl Error]", err);
+      showToast(err.message || "ดึงข้อมูลจากเว็บไซต์ไม่สำเร็จ");
+    } finally {
+      setModalIsCrawling(false);
+      setModalCrawlProgress("");
+    }
+  };
+
   // Open Knowledge Management Modal
   const handleOpenKnowledgeModal = async (bot: BotItem) => {
     setManagingBot(bot);
     setModalTab("docs");
+    setModalUploadMode("files");
+    setModalWebsiteUrl(bot.websiteUrl || "");
     setDocsLoading(true);
     setTestResults([]);
     setTestQuery("");
@@ -315,47 +533,20 @@ export default function BotListPage() {
       {/* Main Content Area */}
       <main className="flex-1 lg:ml-64 min-h-screen flex flex-col overflow-y-auto">
         {/* Top App Bar Header */}
-        <header className="h-20 bg-white/80 backdrop-blur-md px-5 sm:px-8 flex items-center justify-between sticky top-0 z-20 border-b border-borderLight/90">
-          <div className="flex items-center gap-3">
-            {/* Mobile Hamburger Button */}
-            <button
-              type="button"
-              onClick={() => setMobileSidebarOpen(true)}
-              className="p-2 rounded-xl text-slate-700 hover:bg-slate-200/60 lg:hidden"
-              aria-label="Open navigation menu"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
-
-            <div>
-              <div className="flex items-center gap-2.5">
-                <h1 className="text-lg sm:text-xl font-bold text-textMain tracking-tight">
-                  จัดการบอท
-                </h1>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[#EBF3EE] text-[#385241] border border-[#C9DCCF]">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#4E6955]"></span>
-                  {botsData.length} บอทในระบบ
-                </span>
-              </div>
-              <p className="text-xs text-textMuted mt-0.5 hidden sm:block">
-                สร้าง ตั้งค่า และจัดการคลังความรู้ (Knowledge Base) สำหรับ AI Chatbot
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {/* Primary Action Button: + สร้างบอทใหม่ */}
+        <Header
+          title="จัดการบอท"
+          subtitle="สร้าง ตั้งค่า และจัดการคลังความรู้ (Knowledge Base) สำหรับ AI Chatbot"
+          onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
+          actionButton={
             <Link
               href="/dashboard/bots/new"
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#4E6955] hover:bg-[#3E5343] text-white text-xs font-semibold shadow-sm transition active:scale-[0.98] cursor-pointer"
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-brandGreen hover:bg-brandGreenHover text-white text-xs font-semibold shadow-sm transition active:scale-[0.98] cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>+ สร้างบอทใหม่</span>
             </Link>
-          </div>
-        </header>
+          }
+        />
 
         {/* Page Content Body */}
         <div className="p-5 sm:p-8 max-w-7xl w-full mx-auto space-y-6">
@@ -373,8 +564,13 @@ export default function BotListPage() {
               />
             </div>
 
-            {/* Filter Dropdowns */}
-            <div className="flex items-center gap-2.5">
+            {/* Filter Dropdowns & Stats */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-[#EBF3EE] text-[#385241] border border-[#C9DCCF]">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#4E6955]"></span>
+                {botsData.length} บอท
+              </span>
+
               <div className="flex items-center gap-1.5 text-xs text-textMuted font-mono">
                 <Filter className="w-3.5 h-3.5" />
                 <span>สถานะ:</span>
@@ -480,6 +676,42 @@ export default function BotListPage() {
                     <p className="text-xs text-textMuted line-clamp-2 leading-relaxed">
                       {bot.desc}
                     </p>
+
+                    {/* Connected Website URL & Re-sync Button */}
+                    {bot.websiteUrl && (
+                      <div className="bg-[#FAFBF9] border border-[#D5DFD8] rounded-xl p-2.5 space-y-1.5 text-xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 text-textMain min-w-0 truncate">
+                            <Globe className="w-3.5 h-3.5 text-[#4E6955] shrink-0" />
+                            <a
+                              href={bot.websiteUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="font-mono text-[11px] text-slate-700 hover:text-[#4E6955] hover:underline truncate"
+                              title={bot.websiteUrl}
+                            >
+                              {bot.websiteUrl}
+                            </a>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleResyncWebsite(bot)}
+                            disabled={syncingBotId === bot.id}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-[#C9DCCF] text-[11px] font-semibold text-[#385241] hover:bg-[#EBF3EE] transition cursor-pointer disabled:opacity-50 shrink-0 shadow-2xs"
+                            title="ซิงค์ข้อมูลเว็บไซต์ใหม่ (Re-sync Website)"
+                          >
+                            <RefreshCw className={`w-3 h-3 ${syncingBotId === bot.id ? "animate-spin text-[#4E6955]" : ""}`} />
+                            <span>{syncingBotId === bot.id ? "กำลังซิงค์..." : "Re-sync"}</span>
+                          </button>
+                        </div>
+                        {bot.lastCrawledAt && (
+                          <p className="text-[10px] text-textMuted font-mono flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-slate-400" />
+                            <span>ซิงค์ล่าสุด: {new Date(bot.lastCrawledAt).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" })}</span>
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Knowledge Stats & Actions */}
@@ -585,7 +817,47 @@ export default function BotListPage() {
             <div className="p-6 overflow-y-auto flex-1 space-y-4">
               {/* TAB 1: Document List */}
               {modalTab === "docs" && (
-                <div>
+                <div className="space-y-4">
+                  {/* Website Connection & Re-sync Banner */}
+                  {managingBot.websiteUrl && (
+                    <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-[#EBF3EE] text-[#4E6955] flex items-center justify-center shrink-0 shadow-2xs">
+                          <Globe className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-[#385241]">เว็บไซต์ที่เชื่อมต่อ:</span>
+                            <a
+                              href={managingBot.websiteUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="font-mono text-xs text-[#4E6955] hover:underline font-semibold flex items-center gap-1"
+                            >
+                              <span>{managingBot.websiteUrl}</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          </div>
+                          <p className="text-[11px] text-emerald-800 font-mono mt-0.5">
+                            {managingBot.lastCrawledAt
+                              ? `ซิงค์ข้อมูลล่าสุดเมื่อ: ${new Date(managingBot.lastCrawledAt).toLocaleString("th-TH")}`
+                              : "ยังไม่ได้ทำการซิงค์"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleResyncWebsite(managingBot)}
+                        disabled={syncingBotId === managingBot.id}
+                        className="px-4 py-2 rounded-xl bg-[#4E6955] hover:bg-[#3E5343] text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition cursor-pointer disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${syncingBotId === managingBot.id ? "animate-spin" : ""}`} />
+                        <span>{syncingBotId === managingBot.id ? "กำลังซิงค์เว็บไซต์..." : "Re-sync Website"}</span>
+                      </button>
+                    </div>
+                  )}
+
                   {docsLoading ? (
                     <div className="py-16 text-center text-textMuted flex flex-col items-center justify-center">
                       <Loader2 className="w-6 h-6 animate-spin text-[#4E6955] mb-2" />
@@ -624,15 +896,44 @@ export default function BotListPage() {
                             className="p-4 flex items-center justify-between hover:bg-slate-50 transition"
                           >
                             <div className="flex items-start gap-3">
-                              <div className="w-8 h-8 rounded-lg bg-[#EBF3EE] text-[#4E6955] flex items-center justify-center shrink-0 mt-0.5">
-                                <FileText className="w-4 h-4" />
+                              <div
+                                className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                                  doc.fileType === "website"
+                                    ? "bg-sky-50 text-sky-700"
+                                    : "bg-[#EBF3EE] text-[#4E6955]"
+                                }`}
+                              >
+                                {doc.fileType === "website" ? (
+                                  <Globe className="w-4 h-4" />
+                                ) : (
+                                  <FileText className="w-4 h-4" />
+                                )}
                               </div>
                               <div>
-                                <h4 className="font-bold text-xs sm:text-sm text-textMain">
-                                  {doc.title}
-                                </h4>
+                                <div className="flex items-center gap-2">
+                                  <h4 className="font-bold text-xs sm:text-sm text-textMain">
+                                    {doc.title}
+                                  </h4>
+                                  {doc.sourceUrl && (
+                                    <a
+                                      href={doc.sourceUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-slate-400 hover:text-sky-600 transition"
+                                      title={doc.sourceUrl}
+                                    >
+                                      <ExternalLink className="w-3 h-3" />
+                                    </a>
+                                  )}
+                                </div>
                                 <div className="flex flex-wrap items-center gap-2 mt-1 text-[11px] text-textMuted font-mono">
-                                  <span className="bg-slate-100 px-2 py-0.5 rounded text-slate-700 uppercase">
+                                  <span
+                                    className={`px-2 py-0.5 rounded uppercase font-semibold text-[10px] ${
+                                      doc.fileType === "website"
+                                        ? "bg-sky-100 text-sky-800"
+                                        : "bg-slate-100 text-slate-700"
+                                    }`}
+                                  >
                                     {doc.fileType}
                                   </span>
                                   <span>ขนาด: {doc.fileSize || "ข้อความ"}</span>
@@ -664,78 +965,219 @@ export default function BotListPage() {
                 </div>
               )}
 
-              {/* TAB 2: Upload New Document */}
+              {/* TAB 2: Upload or Crawl New Document */}
               {modalTab === "upload" && (
                 <div className="space-y-4">
-                  {/* File selector input */}
-                  <div
-                    onClick={() => modalFileInputRef.current?.click()}
-                    className="border-2 border-dashed border-[#4E6955]/40 hover:border-[#4E6955] bg-[#FAFBF9] rounded-2xl p-6 text-center cursor-pointer transition"
-                  >
-                    <input
-                      ref={modalFileInputRef}
-                      type="file"
-                      className="hidden"
-                      accept=".txt,.md,.markdown,.json,.csv,.faq,.html"
-                      onChange={(e) => handleModalFileUpload(e.target.files)}
-                    />
-                    <UploadCloud className="w-6 h-6 text-[#4E6955] mx-auto mb-2" />
-                    <p className="text-xs font-semibold text-[#385241]">
-                      คลิกเพื่อเลือกไฟล์ข้อความ (TXT, MD, CSV, JSON)
-                    </p>
-                    <p className="text-[11px] text-textMuted mt-0.5">
-                      ระบบจะอ่านเนื้อหาจริงและนำมาใส่ในฟอร์มด้านล่างโดยอัตโนมัติ
-                    </p>
+                  {/* Mode switcher tabs: Files vs Website URL */}
+                  <div className="flex items-center gap-2 border-b border-borderLight font-mono text-xs font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => setModalUploadMode("files")}
+                      className={`pb-2.5 px-3 border-b-2 transition flex items-center gap-2 cursor-pointer ${
+                        modalUploadMode === "files"
+                          ? "border-[#4E6955] text-[#385241]"
+                          : "border-transparent text-textMuted hover:text-textMain"
+                      }`}
+                    >
+                      <UploadCloud className="w-4 h-4" />
+                      <span>อัปโหลดไฟล์ (Files)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setModalUploadMode("crawl")}
+                      className={`pb-2.5 px-3 border-b-2 transition flex items-center gap-2 cursor-pointer ${
+                        modalUploadMode === "crawl"
+                          ? "border-[#4E6955] text-[#385241]"
+                          : "border-transparent text-textMuted hover:text-textMain"
+                      }`}
+                    >
+                      <Globe className="w-4 h-4" />
+                      <span>ดึงข้อมูลจากเว็บไซต์ (Website URL)</span>
+                    </button>
                   </div>
 
-                  {/* Form */}
-                  <form onSubmit={handleIngestDocument} className="space-y-4 text-xs">
-                    <div>
-                      <label className="block font-medium text-textMain mb-1.5 font-mono uppercase tracking-wider">
-                        ชื่อหัวข้อเอกสาร (Title) <span className="text-rose-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={uploadTitle}
-                        onChange={(e) => setUploadTitle(e.target.value)}
-                        placeholder="เช่น คู่มือการใช้งานระบบ, เงื่อนไขและนโยบายความเป็นส่วนตัว"
-                        className="w-full bg-white border border-borderLight rounded-xl px-3.5 py-2.5 text-xs text-textMain focus:outline-none focus:ring-2 focus:ring-[#4E6955]/20 focus:border-[#4E6955]"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block font-medium text-textMain mb-1.5 font-mono uppercase tracking-wider">
-                        เนื้อหาความรู้แบบละเอียด (Document Content) <span className="text-rose-500">*</span>
-                      </label>
-                      <textarea
-                        rows={6}
-                        required
-                        value={uploadContent}
-                        onChange={(e) => setUploadContent(e.target.value)}
-                        placeholder="พิมพ์ วาง หรือเลือกไฟล์ข้อความที่ต้องการให้ระบบนำไปแบ่ง Chunk และคำนวณเวกเตอร์ 768 มิติ..."
-                        className="w-full bg-white border border-borderLight rounded-xl p-3.5 text-xs text-textMain focus:outline-none focus:ring-2 focus:ring-[#4E6955]/20 focus:border-[#4E6955] resize-y"
-                      />
-                    </div>
-
-                    <div className="flex justify-end gap-3 pt-2">
-                      <button
-                        type="button"
-                        onClick={() => setModalTab("docs")}
-                        className="px-4 py-2 border border-borderLight rounded-xl text-textMuted hover:text-textMain"
+                  {/* SUBMODE A: FILES & MANUAL TEXT */}
+                  {modalUploadMode === "files" && (
+                    <div className="space-y-4">
+                      {/* File selector input */}
+                      <div
+                        onClick={() => modalFileInputRef.current?.click()}
+                        className="border-2 border-dashed border-[#4E6955]/40 hover:border-[#4E6955] bg-[#FAFBF9] rounded-2xl p-6 text-center cursor-pointer transition"
                       >
-                        ยกเลิก
-                      </button>
-                      <button
-                        type="submit"
-                        disabled={uploadingDoc}
-                        className="px-5 py-2.5 bg-[#4E6955] hover:bg-[#3E5343] text-white rounded-xl font-semibold shadow-sm flex items-center gap-2 disabled:opacity-50"
-                      >
-                        {uploadingDoc && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                        <span>{uploadingDoc ? "กำลังคำนวณเวกเตอร์และบันทึก..." : "นำเข้าสู่คลังความรู้"}</span>
-                      </button>
+                        <input
+                          ref={modalFileInputRef}
+                          type="file"
+                          className="hidden"
+                          accept=".txt,.md,.markdown,.json,.csv,.faq,.html"
+                          onChange={(e) => handleModalFileUpload(e.target.files)}
+                        />
+                        <UploadCloud className="w-6 h-6 text-[#4E6955] mx-auto mb-2" />
+                        <p className="text-xs font-semibold text-[#385241]">
+                          คลิกเพื่อเลือกไฟล์ข้อความ (TXT, MD, CSV, JSON)
+                        </p>
+                        <p className="text-[11px] text-textMuted mt-0.5">
+                          ระบบจะอ่านเนื้อหาจริงและนำมาใส่ในฟอร์มด้านล่างโดยอัตโนมัติ
+                        </p>
+                      </div>
+
+                      {/* Form */}
+                      <form onSubmit={handleIngestDocument} className="space-y-4 text-xs">
+                        <div>
+                          <label className="block font-medium text-textMain mb-1.5 font-mono uppercase tracking-wider">
+                            ชื่อหัวข้อเอกสาร (Title) <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={uploadTitle}
+                            onChange={(e) => setUploadTitle(e.target.value)}
+                            placeholder="เช่น คู่มือการใช้งานระบบ, เงื่อนไขและนโยบายความเป็นส่วนตัว"
+                            className="w-full bg-white border border-borderLight rounded-xl px-3.5 py-2.5 text-xs text-textMain focus:outline-none focus:ring-2 focus:ring-[#4E6955]/20 focus:border-[#4E6955]"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block font-medium text-textMain mb-1.5 font-mono uppercase tracking-wider">
+                            เนื้อหาความรู้แบบละเอียด (Document Content) <span className="text-rose-500">*</span>
+                          </label>
+                          <textarea
+                            rows={6}
+                            required
+                            value={uploadContent}
+                            onChange={(e) => setUploadContent(e.target.value)}
+                            placeholder="พิมพ์ วาง หรือเลือกไฟล์ข้อความที่ต้องการให้ระบบนำไปแบ่ง Chunk และคำนวณเวกเตอร์ 768 มิติ..."
+                            className="w-full bg-white border border-borderLight rounded-xl p-3.5 text-xs text-textMain focus:outline-none focus:ring-2 focus:ring-[#4E6955]/20 focus:border-[#4E6955] resize-y"
+                          />
+                        </div>
+
+                        <div className="flex justify-end gap-3 pt-2">
+                          <button
+                            type="button"
+                            onClick={() => setModalTab("docs")}
+                            className="px-4 py-2 border border-borderLight rounded-xl text-textMuted hover:text-textMain cursor-pointer"
+                          >
+                            ยกเลิก
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={uploadingDoc}
+                            className="px-5 py-2.5 bg-[#4E6955] hover:bg-[#3E5343] text-white rounded-xl font-semibold shadow-sm flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+                          >
+                            {uploadingDoc && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                            <span>{uploadingDoc ? "กำลังคำนวณเวกเตอร์และบันทึก..." : "นำเข้าสู่คลังความรู้"}</span>
+                          </button>
+                        </div>
+                      </form>
                     </div>
-                  </form>
+                  )}
+
+                  {/* SUBMODE B: WEBSITE CRAWL DIRECTLY INTO BOT */}
+                  {modalUploadMode === "crawl" && (
+                    <form onSubmit={handleModalCrawlWebsite} className="p-5 rounded-2xl bg-[#FAFBF9] border border-[#C9DCCF] space-y-4 text-xs">
+                      <div>
+                        <label className="block font-medium text-[#385241] mb-1.5 font-mono uppercase tracking-wider">
+                          ป้อน URL เว็บไซต์ (เช่น https://example.com) <span className="text-rose-500">*</span>
+                        </label>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                            <Globe className="w-4 h-4" />
+                          </div>
+                          <input
+                            type="url"
+                            required
+                            value={modalWebsiteUrl}
+                            onChange={(e) => setModalWebsiteUrl(e.target.value)}
+                            placeholder="https://example.com"
+                            className="w-full bg-white border border-borderLight rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-textMain placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#4E6955]/20 focus:border-[#4E6955] font-mono"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Options */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 text-[11px] font-mono">
+                        <div>
+                          <label className="block text-textMuted mb-1">ความลึกการค้นหา (Max Depth):</label>
+                          <select
+                            value={modalCrawlDepth}
+                            onChange={(e) => setModalCrawlDepth(Number(e.target.value))}
+                            disabled={modalIsCrawling}
+                            className="w-full bg-white border border-borderLight rounded-xl px-3 py-2 text-textMain"
+                          >
+                            <option value={1}>1 (เฉพาะหน้าแรก)</option>
+                            <option value={2}>2 (หน้าแรก + ลิงก์ภายใน - แนะนำ)</option>
+                            <option value={3}>3 (เจาะลึก 3 ระดับ)</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-textMuted mb-1">จำนวนหน้าสูงสุด (Max Pages):</label>
+                          <select
+                            value={modalCrawlMaxPages}
+                            onChange={(e) => setModalCrawlMaxPages(Number(e.target.value))}
+                            disabled={modalIsCrawling}
+                            className="w-full bg-white border border-borderLight rounded-xl px-3 py-2 text-textMain"
+                          >
+                            <option value={5}>5 หน้า</option>
+                            <option value={10}>10 หน้า</option>
+                            <option value={15}>15 หน้า (แนะนำ)</option>
+                            <option value={30}>30 หน้า</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Clean re-sync checkbox */}
+                      <div className="pt-1">
+                        <label className="flex items-center gap-2 cursor-pointer text-xs text-textMain">
+                          <input
+                            type="checkbox"
+                            checked={modalReSyncClean}
+                            onChange={(e) => setModalReSyncClean(e.target.checked)}
+                            className="rounded border-gray-300 text-[#4E6955] focus:ring-[#4E6955]"
+                          />
+                          <span>ลบข้อมูลหน้าเว็บเดิมของบอทนี้ก่อนดึงใหม่ (Clean Re-sync)</span>
+                        </label>
+                      </div>
+
+                      {/* Live Crawling Progress Indicator */}
+                      {modalIsCrawling && (
+                        <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 space-y-1.5 animate-pulse">
+                          <div className="flex items-center gap-2.5">
+                            <Loader2 className="w-4 h-4 text-[#4E6955] animate-spin shrink-0" />
+                            <p className="text-xs font-bold font-mono">
+                              {modalCrawlProgress || "กำลังอ่านและดึงข้อมูล..."}
+                            </p>
+                          </div>
+                          <p className="text-[11px] text-emerald-700">
+                            ระบบกำลังอ่านหน้าเว็บ ย่อยเป็น Chunks คำนวณเวกเตอร์ 768 มิติ และบันทึกเข้าสู่คลังความรู้ของบอท
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="flex justify-end gap-3 pt-2">
+                        <button
+                          type="button"
+                          disabled={modalIsCrawling}
+                          onClick={() => setModalTab("docs")}
+                          className="px-4 py-2 border border-borderLight rounded-xl text-textMuted hover:text-textMain cursor-pointer"
+                        >
+                          ยกเลิก
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={modalIsCrawling || !modalWebsiteUrl.trim()}
+                          className="px-5 py-2.5 bg-[#4E6955] hover:bg-[#3E5343] text-white rounded-xl font-semibold shadow-sm flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+                        >
+                          {modalIsCrawling ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Globe className="w-3.5 h-3.5" />
+                          )}
+                          <span>{modalIsCrawling ? "กำลังประมวลผล..." : "ดึงข้อมูลและบันทึกอัตโนมัติ (Crawl & Ingest)"}</span>
+                        </button>
+                      </div>
+                    </form>
+                  )}
                 </div>
               )}
 
